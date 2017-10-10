@@ -1,0 +1,4 @@
+
+
+class FileInput(URLInput):
+    pass
