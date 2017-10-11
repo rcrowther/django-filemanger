@@ -1,0 +1,14 @@
+{% load i18n %} 
+
+<form action="" method="get">
+    <input type="text" id="id_q" name="q" value="{{ query|default_if_none:"" }}" />
+    <input type="submit" value="{% trans "Search" %}"/>
+</form>
+
+{% if hits %}
+<ul>
+    {% for hit in hits %}
+    <li><a href="{{ hit.url }}">{{ hit.title }}</a></li>
+    {% endfor %}
+</ul>
+{% endif %}

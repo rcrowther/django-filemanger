@@ -14,13 +14,14 @@ from django.conf import settings
 # different folders for different roles?
 # same name differentiation?
 # where to hold derived files?
+# databases are just configurable --- in GUI/DB messes stuff up
+# ...same story for pipelines
+
 
 ## DBIO
-# buckets
-# admin fix
-# folder writers
-# Model
-# enable types
+#x buckets
+#x admin fix
+#x folder writers
 
 ## Models
 #x get full data from Apertium wiki?
@@ -30,9 +31,13 @@ from django.conf import settings
 # auto-fill name from filename
 
 ## effects
+#x image
 
 ## admin
 # control types?
+# list?
+# search widget?
+# autocomplete widget?
 
 ## upload
 # quota?
@@ -42,8 +47,72 @@ from django.conf import settings
 # should apply the extension?
 # multi-upload?
 
+from django.conf import settings
+#from django.views.generic.simple import direct_to_template
+from whoosh import index, fields
+from whoosh.filedb import filestore
+from whoosh.qparser import QueryParser
+from .whoosh import WHOOSH_SCHEMA
+from whoosh.index import open_dir
+
+
+# visuals
+# stemming
+# title search
+# image results
+# better zero results
+def search(request):
+    """
+    Simple search view, which accepts search queries via url, like google.
+    Use something like ?q=this+is+the+serch+term
+    """
+    storage = filestore.FileStorage(settings.WHOOSH_INDEX)
+    #ix = index.Index(storage, schema=WHOOSH_SCHEMA)
+    ix = open_dir(settings.WHOOSH_INDEX)
+    hits = []
+    query = request.GET.get('q', None)
+    if query is not None and query != u"":
+        #print('whoosh query')
+        # Whoosh don't understands '+' or '-' but we can replace
+        # them with 'AND' and 'NOT'.
+        query = query.replace('+', ' AND ').replace(' -', ' NOT ')
+        parser = QueryParser("content", schema=ix.schema)
+        try:
+            qry = parser.parse(query)
+            #qry = parser.parse('document')
+        except:
+            # don't show the user weird errors only because we don't
+            # understand the query.
+            # parser.parse("") would return None
+            qry = None
+            hits = [{'title' :"nothing doing", 'url' :'nonsense/'}]
+
+        if qry is not None:
+            with ix.searcher() as searcher:
+                print('whoosh qry: ' + str(qry))
+            #searcher = ix.searcher()
+            #hits = [{'title' :"nothing/something", 'url' :'nonsense/'}]
+                hits = searcher.search(qry)
+                #print('whoosh hits: ' + str(hits))
+                context  = {
+                'query' : query,
+                'hits' : hits
+                }
+                return render(request, 'filemanager/search.html', context)     
+        else:
+            hits = [{'title' :"nothing finding", 'url' :'nonsense/'}]
+
+          
+    #return direct_to_template(request, 'search.html',
+    #                          {'query': query, 'hits': hits})
+    context  = {
+    'query' : query,
+    'hits' : hits
+    }
+    return render(request, 'filemanager/search.html', context)
+                              
+####
 class FileForm(ModelForm):
-    
     class Meta:
         model = File
         fields = ['name', 'path', 'author']

@@ -14,7 +14,6 @@ import os
 from django.conf import settings
 
 class FileForm(ModelForm):
-    
     class Meta:
         model = File
         fields = ['name', 'path', 'author']
