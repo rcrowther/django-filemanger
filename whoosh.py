@@ -5,7 +5,7 @@ from whoosh import fields, index
 #from whoosh.filedb import filestore
 from .models import File
 from whoosh.index import open_dir
-from whoosh.index import create_in
+from whoosh.index import create_in, exists_in
 
 
 #class Field():
@@ -17,169 +17,287 @@ from django.core.exceptions import (
     NON_FIELD_ERRORS, FieldError, ImproperlyConfigured
 )
 from whoosh.fields import FieldType
+from .fields import *
 
-# Need the appname and modelname to make the index
+#x Need the appname and modelname to make the index
 # how does Models auto-initiate?
-# why not just build the schema init list?
+#x why not just build the schema init list?
 # meta declaration is horrible?
 # need the add/update triggers in there
 # and first-time build
 # options to be checked and go through
 #x(better...) full set of fields
-# and delete what we have command.
+# and delete index what we have command.
 # stemming
 # absolute URL option
 
-class IntegerField(fields.NUMERIC):
-    def __init__(self, stored=False, unique=False,
-                 field_boost=1.0, decimal_places=0, shift_step=4, signed=True,
-                 sortable=False, default=None)
-        super().__init__(int, 32, stored, unique,
-                 field_boost, decimal_places, shift_step, signed,
-                 sortable, default)
-                 
-class LongField(fields.NUMERIC):
-    def __init__(self, stored=False, unique=False,
-                 field_boost=1.0, decimal_places=0, shift_step=4, signed=True,
-                 sortable=False, default=None)
-        super().__init__(long, 64, stored, unique,
-                 field_boost, decimal_places, shift_step, signed,
-                 sortable, default)
-                                  
-class FloatField(fields.NUMERIC):
-    def __init__(self, stored=False, unique=False,
-                 field_boost=1.0, decimal_places=0, shift_step=4, signed=True,
-                 sortable=False, default=None)
-        super().__init__(float, 32, stored, unique,
-                 field_boost, decimal_places, shift_step, signed,
-                 sortable, default)         
-
-class DateTimeField(fields.DATETIME):
-    def __init__(self, stored=False, unique=False, sortable=False):
-        super().__init__(stored, unique, sortable)
-
-class BooleanField(fields.BOOLEAN):
-    def __init__(self, stored=False, field_boost=1.0):
-        super().__init__(self, stored, field_boost):
-
-class StoredField(fields.STORED):
-    def __init__(self):
-        pass
-       
-class KeywordField(fields.KEYWORD):
-    def __init__(self, stored=False, lowercase=False, commas=False,
-                 scorable=False, unique=False, field_boost=1.0, sortable=False,
-                 vector=None, analyzer=None):
-        super().__init__(stored, lowercase, commas,
-                 scorable, unique, field_boost, sortable,
-                 vector, analyzer)
-        
-class IdField(fields.ID):
-    def __init__(self, stored=False, unique=False, field_boost=1.0,
-                 sortable=False, analyzer=None):
-        super().__init__(stored, unique, field_boost,
-                 sortable, analyzer)
-
-                 
-class TextField(fields.TEXT):
-    def __init__(self, analyzer=None, phrase=True, chars=False, stored=False,
-                 field_boost=1.0, multitoken_query="default", spelling=False,
-                 sortable=False, lang=None, vector=None,
-                 spelling_prefix="spell_"):
-        super().__init__(analyzer, phrase, chars, stored,
-                 field_boost, multitoken_query, spelling,
-                 sortable, lang, vector,
-                 spelling_prefix)
-
-class NGamWordsField(fields.NGRAMWORDS):
-    def __init__(self, minsize=2, maxsize=4, stored=False, field_boost=1.0,
-                 tokenizer=None, at=None, queryor=False, sortable=False):
-        super().__init__(minsize, maxsize, stored, field_boost,
-                 tokenizer, at, queryor, sortable)
-
-
       
 #! one needs to be 'unrecognised'?
-def to_field(klass, **kwargs):
+def default_woosh_field(klass, **kwargs):
     '''
-    Intended as sense, not a definition of what can be done.
+    Given a Model Field, return a guess for a Whoosh field.
+    Intended as nest-guess at likely sense, not a definition of what can be done.
     '''
+    #print('klass:' + str(klass))
+    #print('klass ==:' + str(klass == models.DateField))
+
     if (klass == models.CharField):
         return TextField()
     if (
         klass == models.DateTimeField 
-        or klass == DateField 
-        or klass == EmailField
-        or klass == URLField
-        or klass == UUIDField
+        or klass == models.DateField 
+        or klass == models.EmailField
+        or klass == models.URLField
+        or klass == models.UUIDField
         ):
         return IdField
     return None
 
 
-class DefiningClass(type):
-    def __new__(mcs, name, bases, attrs):
-        new_class = super(DefiningClass, mcs).__new__(mcs, name, bases, attrs)
-        return new_class
+#class DefiningClass(type):
+    #def __new__(mcs, name, bases, attrs):
+        #new_class = super(DefiningClass, mcs).__new__(mcs, name, bases, attrs)
+        #return new_class
         
         
-class DeclarativeFieldsMetaclass(DefiningClass):
-    """Collect Fields declared on the base classes."""
+#class DeclarativeFieldsMetaclass(DefiningClass):
+class DeclarativeFieldsMetaclass(type):
+    """Collect Fields declared on base classes."""
     def __new__(mcs, name, bases, attrs):
-        print('new DeclarativeFieldsMetaclass')
         # Collect fields from current class.
-        print('new DeclarativeFieldsMetaclass')
-        current_fields = []
-        for key, value in list(attrs.items()):
-            if isinstance(value, FieldType):
-                current_fields.append((key, value))
-                attrs.pop(key)
-        attrs['declared_fields'] = current_fields
+        #print('new DeclarativeFieldsMetaclass')
+        current_fields = {}
+        for k, v in list(attrs.items()):
+            #print('key: '+str(k))
+            if isinstance(v, FieldType):
+                #print('v: '+str(v))
+                current_fields[k] = v
+                attrs.pop(k)
+        #attrs['declared_fields'] = current_fields
 
         new_class = super(DeclarativeFieldsMetaclass, mcs).__new__(mcs, name, bases, attrs)
 
         # Walk through the MRO.
-        declared_fields = {}
+        base_fields = {}
         for base in new_class.__mro__:
             # Collect fields from base class.
-            if hasattr(base, 'declared_fields'):
-                declared_fields.update(base.declared_fields)
+            if hasattr(base, 'whoosh_fields'):
+                base_fields.update(base.whoosh_fields)
 
             # Field shadowing.
             for attr, value in base.__dict__.items():
-                if value is None and attr in declared_fields:
-                    declared_fields.pop(attr)
+                if value is None and attr in base_fields:
+                    base_fields.pop(attr)
 
-        new_class.base_fields = declared_fields
-        new_class.declared_fields = declared_fields
+        #new_class.base_fields = base_fields
+        if (not hasattr(new_class, 'whoosh_fields')):
+            new_class.whoosh_fields = {}
+        new_class.whoosh_fields.update(base_fields)
+        new_class.whoosh_fields.update(current_fields)
+
+        #attrs['all_fields'] = chain(attrs['all_fields'], current_fields, declared_fields)
+        #attrs['all_fields'].update(current_fields, declared_fields)
+        #print('class fields: ' + str(attrs['all_fields']))
 
         return new_class
-
-    @classmethod
-    def __prepare__(metacls, name, bases, **kwds):
-        # Remember the order in which form fields are defined.
-        return {}
-
-class ModelWooshOptions:
-    def __init__(self, app_label=None, options=None):
-        self.app_label = app_label
-        self.model = getattr(options, 'model', None)
-        self.fields = getattr(options, 'fields', None)
-        self.field_classes = getattr(options, 'field_classes', None)
         
-class Options:
-    def __init__(self, meta, app_label=None):
-        self.app_label = app_label
-        self.meta = meta
-        self.local_fields = []
+        
 
-    def _prepare(self, model):
-        # in original, finds pk etc.
-        pass
+class WooshOptions:
+    def __init__(self, app_label, module, class_name, options=None):
+        self.whoosh_index = getattr(options, 'whoosh_index', None)
+        if not self.whoosh_index:
+            self.whoosh_index = "{0}_{1}".format(app_label, class_name)   
+        self.module = module
+        self.class_name = class_name
+        self.fields = getattr(options, 'fields', None)
+        self.schema_fields = []
+        self.model = None
+
+    def add_model_data(self, options=None):
+        self.model = getattr(options, 'model', None)
+
+    def __str__(self):
+        return "WooshOptions(whoosh_index:{0}, module:{1}, model:{2}, fields:{3}, schema_fields:{4})".format(
+        self.whoosh_index,
+        self.module,
+        self.model,
+        self.fields,
+        self.schema_fields
+        )
 
 
+class WooshMetaclass(DeclarativeFieldsMetaclass):
+    def _schema_fields(mcs, field_data, opts):
+        print('schema fields')
+        fields = {}
+        for f in opts.fields:
+            if not (f in field_data):
+                raise ImproperlyConfigured(
+                    "Whoosh class {0}.{1} requested field {2} not declared.".format(opts.module, opts.class_name, f)
+                )
+            else:
+              fields[f] = field_data[f]
+        return fields
+        
+    def _first_run(mcs, whoosh_index, schema_fields):
+        print('first run of derived type')
+        #if not os.path.exists(settings.WHOOSH):
+        #    os.mkdir(settings.WHOOSH)
+            #storage = store.FileStorage(settings.WHOOSH_INDEX)
+            #ix = index.Index(storage, schema=WHOOSH_SCHEMA, create=True)
+        #create_in(dirname, schema, indexname=None):
+        #exists_in(dirname, indexname=None):
+        #destroy()
+        if not exists_in(settings.WHOOSH, whoosh_index):
+            whoosh_schema = fields.Schema(**schema_fields)
+            create_in(settings.WHOOSH, whoosh_schema, whoosh_index)
+        
+    def __new__(mcs, name, bases, attrs):
+        print('new WooshMetaclass : ' + name)
+        
+        opts = attrs.pop( 'Meta', None)
 
-def fields_for_model(model, *, fields=None, field_classes=None):
+        # make the new class
+        new_class = super(WooshMetaclass, mcs).__new__(mcs, name, bases, attrs)  
+
+
+        module = attrs.pop('__module__')
+        #print('meta meta:' + str(attrs))
+
+        # get meta. Fail if none
+        #! always is one now?
+        #if not opts:
+        #    raise ImproperlyConfigured(
+        #        "Whoosh class {0}.{1} with no 'meta' attribute.".format(module, name)
+        #    )
+
+        print('meta meta:' + str(new_class.whoosh_fields))
+
+        #new_class._meta = opts
+
+        whoosh_index = getattr(opts, 'whoosh_index', None)
+        app_label = getattr(opts, 'app_label', None)
+        if ((whoosh_index is None) and (app_label is None)):
+            app_config = apps.get_containing_app_config(module)
+            if app_config is None:
+                raise ImproperlyConfigured(
+                    "Whoosh class {0}.{1} doesn't declare an explicit whoosh_index and isn't in an application in INSTALLED_APPS.".format(module, name)
+                )
+            else:
+                app_label = app_config.label
+
+        fields = getattr(opts, 'fields', None)
+        if fields is None:
+                raise ImproperlyConfigured(
+                    "Whoosh class {0}.{1} doesn't declare a fields attribute.".format(module, name)
+                )
+       
+        # We check if a string was passed to `fields`,
+        # which is likely to be a mistake where the user typed ('foo') instead
+        # of ('foo',)
+        #value = getattr(opts, 'fields')
+        if isinstance(fields, str):
+            msg = "{0}s.Meta.fields cannot be a string. Did you mean to type: ('{1}s',)?".format(
+                name,
+                value,
+                )
+            raise TypeError(msg)
+
+        new_class._meta = WooshOptions(app_label, module, name, opts) 
+        schema_fields = new_class._meta.schema_fields = new_class._schema_fields(new_class.whoosh_fields, new_class._meta)
+        new_class._first_run(new_class._meta.whoosh_index, schema_fields) 
+        return new_class
+
+
+class BaseWhoosh():
+    #def __init__(self, whoosh_index=None):
+        #opts = self._meta
+        #if opts.model is None:
+            #raise ValueError('ModelForm has no model class specified.')
+        #pass
+        #doc_count()
+    #def open_dir(dirname, indexname=None, readonly=False, schema=None):
+
+
+    def bulk_add(self, it):
+        ix = open_dir(settings.WHOOSH, index_id)
+        writer = ix.writer()
+        for e in it:
+            writer.add_document(e)
+        writer.commit()      
+
+    def add(self, **fields):
+        '''
+        Write a document.
+        Ignores keys not in schema. None for unprovided schema keys.
+        
+        @param fields keys for the schema, values for values. 
+        '''
+        ix = open_dir(settings.WHOOSH, index_id)
+        writer = ix.writer()
+        writer.add_document(**fields)
+        writer.commit()
+
+    def clear(self):
+        '''
+        Empty the index.
+        '''
+        ix = open_dir(settings.WHOOSH, index_id)
+        ix.destroy()
+
+    def delete(self, fieldname, text):
+        '''
+        Delete a document.
+        Match on any key.
+        
+        @param fieldname key to match against
+        @param text match value. 
+        '''
+        ix = open_dir(settings.WHOOSH, index_id)
+        writer = ix.writer()
+        writer.delete_by_term(fieldname, text, searcher=None)
+        writer.commit() 
+        
+    def merge(self, **fields):
+        '''
+        Merge a document.
+        Ignores keys not in schema. None for unprovided schema keys.
+        Checks for unique keys then matches against parameters.
+        Much slower than add(), but will create.
+        
+        @param fields keys for the schema, values for values. 
+        '''
+        # "It is safe to use ``update_document`` in place of ``add_document``; if
+        # there is no existing document to replace, it simply does an add."
+        ix = open_dir(settings.WHOOSH, index_id)
+        writer = ix.writer()
+        writer.update_document(**fields)
+        writer.commit() 
+
+    def size(self):
+        ix = open_dir(settings.WHOOSH, index_id)
+        writer = ix.writer()
+        r = writer.doc_count()
+        writer.commit()
+        return r
+        
+    def schema(self):
+        return fields.Schema(**self.whoosh_fields)
+            
+    def optimize(self):
+        ix = open_dir(settings.WHOOSH, index_id)
+        ix.optimize()
+        
+        
+class Whoosh(BaseWhoosh, metaclass=WooshMetaclass):
+    class Meta:
+        fields = []
+        #pass
+    #@classmethod
+
+
+def fields_for_model(model, allowed_fields):
     """
     Return an ``OrderedDict`` containing form fields for the given model.
 
@@ -211,98 +329,168 @@ def fields_for_model(model, *, fields=None, field_classes=None):
     should be applied to a field's queryset.
     """
     field_list = {}
-    opts = model._meta
+    not_recognised = {}
+    #opts = model._meta
     # Avoid circular import
     #from django.db.models.fields import Field as ModelField
     #sortable_private_fields = [f for f in opts.private_fields if isinstance(f, ModelField)]
-    for f in opts.concrete_fields:
-        if f.name not in fields:
+    for mf in model._meta.concrete_fields:
+        name = mf.name 
+        if name not in allowed_fields:
             continue
 
         kwargs = {}
 
-        if field_classes and f.name in field_classes:
-            kwargs['form_class'] = field_classes[f.name]
+        #if field_classes and f.name in field_classes:
+        #    kwargs['form_class'] = field_classes[f.name]
 
         #formfield = f.formfield(**kwargs)
-        formfield = to_field(f.__class__)
-        if formfield:
-            field_list[f.name] = formfield
+        wooshfield = default_woosh_field(mf)
+        if wooshfield:
+            field_list[name] = wooshfield
         else:
-            ignored.append(f.name)
+            not_recognised[name] = wooshfield.__class__.__name__
 
-    return field_list
+    return (field_list, not_recognised)
+
+################################
+#class ModelWooshMetaclass(DeclarativeFieldsMetaclass):
+    #def _first_run(mcs, whoosh_index, whoosh_schema):
+        #print('first run of derived type')
+        #if not os.path.exists(settings.WHOOSH_INDEX):
+            #os.mkdir(settings.WHOOSH_INDEX)
+            ##storage = store.FileStorage(settings.WHOOSH_INDEX)
+            ##ix = index.Index(storage, schema=WHOOSH_SCHEMA, create=True)
+        ##create_in(dirname, schema, indexname=None):
+        ##exists_in(dirname, indexname=None):
+        ##destroy()
+        ##create_in(settings.WHOOSH_INDEX, whoosh_schema, whoosh_index)
+        
+    #def __new__(mcs, name, bases, attrs):
+        #print('new ModelWooshMetaclass : ' + name)
+        
+        #new_class = super(ModelWooshMetaclass, mcs).__new__(mcs, name, bases, attrs)
+
+        ##if bases == (BaseWhoosh,):
+        ##    return new_class
+        ##print('meta class:' + str(new_class))
+        ##print('meta dec fields:' + str(new_class.all_fields))
+        
+        
+        
+        #opts = new_class._meta = ModelWooshOptions(getattr(new_class, 'Meta', None))
+        #print('meta meta:' + str(opts))
 
 
-class ModelWooshMetaclass(DeclarativeFieldsMetaclass):
-    def __new__(mcs, name, bases, attrs):
-        print('new ModelWooshMetaclass')
-        new_class = super(ModelWooshMetaclass, mcs).__new__(mcs, name, bases, attrs)
+        ## We check if a string was passed to `fields`,
+        ## which is likely to be a mistake where the user typed ('foo') instead
+        ## of ('foo',)
+        #value = getattr(opts, 'fields')
+        #if isinstance(value, str):
+            #msg = "{0}s.Meta.fields cannot be a string. Did you mean to type: ('{1}s',)?".format(
+                #new_class.__name__,
+                #value,
+                #)
+            #raise TypeError(msg)
 
-        if bases == (BaseWhoosh,):
-            return new_class
+        #if not opts.model:
+            #raise ImproperlyConfigured(
+                #"ModelWoosh with no 'model' attribute: model:{0}".format(
+                #name
+                #))
 
-        opts = new_class._meta = ModelWooshOptions('whoosh-app', getattr(new_class, 'Meta', None))
+        #whoosh_index = getattr(opts, 'whoosh_index', None)
+        #if whoosh_index is None:
+            #module = attrs.pop('__module__')
+            #app_config = apps.get_containing_app_config(module)
+            #if app_config is None:
+                #raise RuntimeError(
+                    #"Model class %s.%s doesn't declare an explicit whoosh_index and isn't in an application in INSTALLED_APPS." % (module, name)
+                #)
+            #else:
+                #whoosh_index = app_config.label + '_' + name
+        #new_class.whoosh_index = whoosh_index 
 
-        # We check if a string was passed to `fields` or `exclude`,
-        # which is likely to be a mistake where the user typed ('foo') instead
-        # of ('foo',)
+                            
+        #if opts.model != -1:
+            ## this is a derived instance being instanciated.
+            
+            ## extract whoosh fields from the model.
+            #if opts.fields is None:
+                #raise ImproperlyConfigured(
+                    #"ModelWoosh with no 'fields' attribute: model:{0}".format(
+                    #name
+                    #))
+                
+            #model_field_list = {field.name : field.__class__ for field in opts.model._meta.concrete_fields}
+            #declared = new_class.all_fields
+            
+            ##print('model_field_list:' + str(model_field_list))
+            ##print('model ignored:' + str(not_recognised))
+            #unrecognised_field_names = []
+            #not_defaulted_and_not_declared = {}
+            #whoosh_fields = {}
+            #for fieldname in opts.fields:
+                ## is it in the model?
+                #if (not(fieldname in model_field_list)):
+                    #unrecognised_field_names.append(fieldname)
+                    #continue
+                ## is there an declared override?
+                #r = declared.get(fieldname)
+                #if (r):
+                    #whoosh_fields[fieldname] = r 
+                    #continue
+                ## can it be defaulted?
+                #r = default_woosh_field(model_field_list[fieldname])
+                #if (r):
+                    #whoosh_fields[fieldname] = r
+                #else:
+                    #not_defaulted_and_not_declared[fieldname] = model_field_list[fieldname].__name__
 
-        value = getattr(opts, 'fields')
-        if isinstance(value, str):
-            msg = ("%(model)s.Meta.%(opt)s cannot be a string. "
-                   "Did you mean to type: ('%(value)s',)?" % {
-                       'model': new_class.__name__,
-                       'opt': opt,
-                       'value': value,
-                   })
-            raise TypeError(msg)
+            #if (unrecognised_field_names):
+                #raise ImproperlyConfigured(
+                    #"'fields' attribute names field(s) not in stated Model: model:{0} fields:{1}".format(
+                    #name,
+                    #', '.join(unrecognised_field_names)
+                    #))
+                  
+            #if (not_defaulted_and_not_declared):
+                #raise ImproperlyConfigured(
+                    #"ModelField(s) can not be defaulted. Try declaring the Whoosh field to use? : Model:{0} : fields:\n{1}".format(
+                    #name,
+                    #str(not_defaulted_and_not_declared)
+                    #))
+        ## Override default model fields with any custom declared ones
+        ## (plus, include all the other declared fields).
+        ##fields.update(new_class.all_fields)
+        ##else:
+        ##    fields = new_class.all_fields
 
-        if opts.model:
-            # If a model is defined, extract whoosh fields from it.
-            if opts.fields is None:
-                raise ImproperlyConfigured(
-                    "Creating a ModelWoosh without the 'fields' attribute "
-                    "is prohibited; Woosh %s "
-                    "needs updating." % name
-                )
+        ##new_class.base_fields = fields
+            ##new_class.whoosh_fields = fields
+            #new_class._first_run(
+            #whoosh_index,
+            #fields.Schema(**whoosh_fields)
+            #)
 
-            fields = fields_for_model(
-                opts.model, fields=opts.fields, field_classes=opts.field_classes
-            )
-            print( str(fields))
-            # make sure opts.fields doesn't specify an invalid field
-            none_model_fields = {k for k, v in fields.items() if not v}
-            missing_fields = none_model_fields.difference(new_class.declared_fields)
-            if missing_fields:
-                message = 'Unknown field(s) (%s) specified for %s'
-                message = message % (', '.join(missing_fields),
-                                     opts.model.__name__)
-                raise FieldError(message)
-            # Override default model fields with any custom declared ones
-            # (plus, include all the other declared fields).
-            fields.update(new_class.declared_fields)
-        else:
-            fields = new_class.declared_fields
+        #return new_class
+########################
 
-        new_class.base_fields = fields
-
-        return new_class
-
-class BaseWhoosh:
-    """
-    The main implementation of all the Form logic. Note that this class is
-    different than Form. See the comments by the Form class for more info. Any
-    improvements to the form API should be made to this class, not to the Form
-    class.
-    """
-    #default_renderer = None
-    #field_order = None
-    #prefix = None
-    #use_required_attribute = True
-    index_path=None
+#class BaseWhoosh:
+    #"""
+    #The main implementation of all the Form logic. Note that this class is
+    #different than Form. See the comments by the Form class for more info. Any
+    #improvements to the form API should be made to this class, not to the Form
+    #class.
+    #"""
+    ##default_renderer = None
+    ##field_order = None
+    ##prefix = None
+    ##use_required_attribute = True
+    #index_path=None
     
-    def __init__(self, index_path=None):
+    #def __init__(self, index_path=None):
+        #pass
         #self.is_bound = data is not None or files is not None
         #self.data = {} if data is None else data
         #self.files = {} if files is None else files
@@ -321,7 +509,7 @@ class BaseWhoosh:
         # alter self.fields, we create self.fields here by copying base_fields.
         # Instances should always modify self.fields; they should not modify
         # self.base_fields.
-        self.fields = copy.deepcopy(self.base_fields)
+        #self.fields = copy.deepcopy(self.base_fields)
         #self._bound_fields_cache = {}
         #self.order_fields(self.field_order if field_order is None else field_order)
 
@@ -343,16 +531,7 @@ class BaseWhoosh:
 #class Whoosh(BaseWhoosh, metaclass=DeclarativeFieldsMetaclass):
 #    pass
     
-class BaseModelWhoosh(BaseWhoosh):
-    def __init__(self, whoosh_index=None):
-        opts = self._meta
-        if opts.model is None:
-            raise ValueError('ModelForm has no model class specified.')
-
-    def schema(self):
-        return fields.Schema(**self.base_fields)
-            
-          
+                  
 #class ModelBase(type):
     #"""Metaclass for all models."""
     #def add_to_class(cls, name, value):
@@ -447,20 +626,21 @@ class BaseModelWhoosh(BaseWhoosh):
 #class Model(metaclass=ModelBase):
 # a = ModelWhoosh(File)
 
-class ModelWhoosh(BaseModelWhoosh, metaclass=ModelWooshMetaclass):
-        pass
+#class ModelWhoosh(BaseModelWhoosh, metaclass=ModelWooshMetaclass):
+
+    #class Meta:
+        ## a sentinel
+        #model = -1
 
 
-class FileSchema(ModelWhoosh):
-  model = File
-  
-  name = TextField(
-    stored=True
-    #unique=True
-    )
-  date = IdField
-  author = IdField
-  
+
+#class FileSchema(ModelWhoosh):
+  #class Meta:
+    #woosh_index = 'modelwoosh'
+    #app_label = 'modelwoosh'
+    #model=File
+    #fields = ['name', 'date', 'author']
+    
 #print('woosh prelim...')
 WHOOSH_SCHEMA = fields.Schema(title=fields.TEXT(stored=True),
                               content=fields.TEXT,
@@ -468,11 +648,11 @@ WHOOSH_SCHEMA = fields.Schema(title=fields.TEXT(stored=True),
                               
 #! in app, not in main site?
 def create_index(sender=None, **kwargs):
-    if not os.path.exists(settings.WHOOSH_INDEX):
-        os.mkdir(settings.WHOOSH_INDEX)
-        #storage = store.FileStorage(settings.WHOOSH_INDEX)
+    if not os.path.exists(settings.WHOOSH):
+        os.mkdir(settings.WHOOSH)
+        #storage = store.FileStorage(settings.WHOOSH)
         #ix = index.Index(storage, schema=WHOOSH_SCHEMA, create=True)
-        create_in(settings.WHOOSH_INDEX, WHOOSH_SCHEMA)
+        create_in(settings.WHOOSH, WHOOSH_SCHEMA)
 
 
 # not exists
