@@ -6,7 +6,7 @@ from whoosh import fields, index
 from .models import File
 from whoosh.index import open_dir
 from whoosh.index import create_in, exists_in
-
+from .managers import Manager
 
 #class Field():
 #    pass
@@ -18,6 +18,7 @@ from django.core.exceptions import (
 )
 from whoosh.fields import FieldType
 from .fields import *
+import time
 
 #x Need the appname and modelname to make the index
 # how does Models auto-initiate?
@@ -42,12 +43,12 @@ def default_woosh_field(klass, **kwargs):
     #print('klass ==:' + str(klass == models.DateField))
 
     if (klass == models.CharField):
-        return TextField()
+        return TextField(stored=True)
     if (
         klass == models.DateTimeField 
         or klass == models.DateField 
-        or klass == models.EmailField
-        or klass == models.URLField
+        or klass == models.EmailField(stored=True)
+        or klass == models.URLField(stored=True)
         or klass == models.UUIDField
         ):
         return IdField
@@ -112,6 +113,7 @@ class WooshOptions:
         self.class_name = class_name
         self.fields = getattr(options, 'fields', None)
         self.schema_fields = []
+        self.schema = None
         self.model = None
 
     def add_model_data(self, options=None):
@@ -140,8 +142,9 @@ class WooshMetaclass(DeclarativeFieldsMetaclass):
               fields[f] = field_data[f]
         return fields
         
-    def _first_run(mcs, whoosh_index, schema_fields):
+    def _first_run(mcs, whoosh_index, whoosh_schema):
         print('first run of derived type')
+        print('first run schema' + str(whoosh_schema))
         #if not os.path.exists(settings.WHOOSH):
         #    os.mkdir(settings.WHOOSH)
             #storage = store.FileStorage(settings.WHOOSH_INDEX)
@@ -150,16 +153,25 @@ class WooshMetaclass(DeclarativeFieldsMetaclass):
         #exists_in(dirname, indexname=None):
         #destroy()
         if not exists_in(settings.WHOOSH, whoosh_index):
-            whoosh_schema = fields.Schema(**schema_fields)
             create_in(settings.WHOOSH, whoosh_schema, whoosh_index)
-        
+
+    
     def __new__(mcs, name, bases, attrs):
         print('new WooshMetaclass : ' + name)
-        
+        print('bases : ' + str(bases))
+        super_new = super().__new__
+
+        # This metaclass will run on a base model such as Whoosh or 
+        # ModelWhoosh. We want to check for the required attributes
+        # but not on bases themselves.
+        parents = [b for b in bases if isinstance(b, WooshMetaclass)]
+        if not parents:
+            return super_new(mcs, name, bases, attrs)
+            
         opts = attrs.pop( 'Meta', None)
 
         # make the new class
-        new_class = super(WooshMetaclass, mcs).__new__(mcs, name, bases, attrs)  
+        new_class = super_new(mcs, name, bases, attrs)  
 
 
         module = attrs.pop('__module__')
@@ -187,8 +199,8 @@ class WooshMetaclass(DeclarativeFieldsMetaclass):
             else:
                 app_label = app_config.label
 
-        fields = getattr(opts, 'fields', None)
-        if fields is None:
+        requested_fields = getattr(opts, 'fields', None)
+        if requested_fields is None:
                 raise ImproperlyConfigured(
                     "Whoosh class {0}.{1} doesn't declare a fields attribute.".format(module, name)
                 )
@@ -197,18 +209,35 @@ class WooshMetaclass(DeclarativeFieldsMetaclass):
         # which is likely to be a mistake where the user typed ('foo') instead
         # of ('foo',)
         #value = getattr(opts, 'fields')
-        if isinstance(fields, str):
-            msg = "{0}s.Meta.fields cannot be a string. Did you mean to type: ('{1}s',)?".format(
+        if isinstance(requested_fields, str):
+            msg = "Whoosh class {0}.{1}s.Meta.fields cannot be a string. Did you mean to type: ('{2}s',)?".format(
+                module,
                 name,
-                value,
+                requested_fields,
                 )
             raise TypeError(msg)
 
         new_class._meta = WooshOptions(app_label, module, name, opts) 
         schema_fields = new_class._meta.schema_fields = new_class._schema_fields(new_class.whoosh_fields, new_class._meta)
-        new_class._first_run(new_class._meta.whoosh_index, schema_fields) 
+        whoosh_schema = new_class._meta.schema = fields.Schema(**schema_fields)
+
+        managers = [k for k,v in attrs.items() if isinstance(v, Manager)]
+        
+        if (not managers):
+            if 'actions' in attrs:
+                raise ImproperlyConfigured(
+                    "No manager on Whoosh class {0}.{1}, but an 'actions' attribute blocks auto-create.".format(module, name)
+                )             
+            new_class.actions = Manager(
+                settings.WHOOSH,
+                new_class._meta.whoosh_index,
+                whoosh_schema
+            )
+            
+        new_class._first_run(new_class._meta.whoosh_index, whoosh_schema) 
         return new_class
 
+from whoosh.qparser import QueryParser
 
 class BaseWhoosh():
     #def __init__(self, whoosh_index=None):
@@ -218,15 +247,25 @@ class BaseWhoosh():
         #pass
         #doc_count()
     #def open_dir(dirname, indexname=None, readonly=False, schema=None):
+    #get schema from index (not storage)
+    #ix = open_dir(settings.WHOOSH, self._meta.whoosh_index)
+    #ix.schema
 
-
+    @classmethod
     def bulk_add(self, it):
-        ix = open_dir(settings.WHOOSH, index_id)
+        start = time.time()
+        ix = open_dir(settings.WHOOSH, self._meta.whoosh_index)
+        end = time.time()
+        print('opendir', 'took', str(end - start), 'time')
+        start = time.time()
         writer = ix.writer()
+        end = time.time()
+        print('writer', 'took', str(end - start), 'time')
         for e in it:
             writer.add_document(e)
         writer.commit()      
 
+    @classmethod
     def add(self, **fields):
         '''
         Write a document.
@@ -234,18 +273,39 @@ class BaseWhoosh():
         
         @param fields keys for the schema, values for values. 
         '''
-        ix = open_dir(settings.WHOOSH, index_id)
+        start = time.time()
+        ix = open_dir(settings.WHOOSH, self._meta.whoosh_index)
+        end = time.time()
+        print('opendir', ' took', str(end - start), 'time')
+        start = time.time()
         writer = ix.writer()
+        end = time.time()
+        print('writer', ' took', str(end - start), 'time')
         writer.add_document(**fields)
+        start = time.time()
         writer.commit()
-
+        end = time.time()
+        print('comit', ' took', str(end - start), 'time')
+    @classmethod
     def clear(self):
         '''
         Empty the index.
         '''
-        ix = open_dir(settings.WHOOSH, index_id)
-        ix.destroy()
+        ix = open_dir(settings.WHOOSH, self._meta.whoosh_index)
+        #On fileStorage and RAMStorage, clean()
+        # Storage. Can only do on Filestorage.
+        #ix.storage.destroy()
+        ix.storage.clean()    
+            
+    @classmethod
+    def close(self):
+        '''
+        Finish the index.
+        '''
+        ix = open_dir(settings.WHOOSH, self._meta.whoosh_index)
+        ix.close()
 
+    @classmethod
     def delete(self, fieldname, text):
         '''
         Delete a document.
@@ -254,11 +314,12 @@ class BaseWhoosh():
         @param fieldname key to match against
         @param text match value. 
         '''
-        ix = open_dir(settings.WHOOSH, index_id)
+        ix = open_dir(settings.WHOOSH, self._meta.whoosh_index)
         writer = ix.writer()
         writer.delete_by_term(fieldname, text, searcher=None)
         writer.commit() 
         
+    @classmethod
     def merge(self, **fields):
         '''
         Merge a document.
@@ -270,29 +331,49 @@ class BaseWhoosh():
         '''
         # "It is safe to use ``update_document`` in place of ``add_document``; if
         # there is no existing document to replace, it simply does an add."
-        ix = open_dir(settings.WHOOSH, index_id)
+        ix = open_dir(settings.WHOOSH, self._meta.whoosh_index)
         writer = ix.writer()
         writer.update_document(**fields)
         writer.commit() 
 
+    @classmethod
+    def read(self, query):
+        start = time.time()
+        end = time.time()
+        print('opendir', ' took', str(end - start), 'time')
+        ix = open_dir(settings.WHOOSH, self._meta.whoosh_index)
+        r = None
+        with ix.searcher() as searcher:
+            start = time.time()
+            query = QueryParser("author", ix.schema).parse(query)
+            end = time.time()
+            print('query', ' took', str(end - start), 'time')
+            r = searcher.search(query)
+        return r
+
+    @classmethod
     def size(self):
-        ix = open_dir(settings.WHOOSH, index_id)
-        writer = ix.writer()
-        r = writer.doc_count()
-        writer.commit()
+        ix = open_dir(settings.WHOOSH, self._meta.whoosh_index)
+        r = ix.doc_count()
+        #writer.close()
+        #ix.close()
         return r
         
-    def schema(self):
-        return fields.Schema(**self.whoosh_fields)
+   #@classmethod
+   #def schema(self):
+   #     return fields.Schema(**self.whoosh_fields)
             
+    @classmethod
     def optimize(self):
-        ix = open_dir(settings.WHOOSH, index_id)
+        ix = open_dir(settings.WHOOSH, self._meta.whoosh_index)
         ix.optimize()
         
         
-class Whoosh(BaseWhoosh, metaclass=WooshMetaclass):
-    class Meta:
-        fields = []
+#class Whoosh(BaseWhoosh, metaclass=WooshMetaclass):
+class Whoosh(metaclass=WooshMetaclass):
+    pass
+    #class Meta:
+    #    fields = []
         #pass
     #@classmethod
 
@@ -642,17 +723,17 @@ def fields_for_model(model, allowed_fields):
     #fields = ['name', 'date', 'author']
     
 #print('woosh prelim...')
-WHOOSH_SCHEMA = fields.Schema(title=fields.TEXT(stored=True),
-                              content=fields.TEXT,
-                              url=fields.ID(stored=True, unique=True))
+#WHOOSH_SCHEMA = fields.Schema(title=fields.TEXT(stored=True),
+#                              content=fields.TEXT,
+#                              url=fields.ID(stored=True, unique=True))
                               
 #! in app, not in main site?
-def create_index(sender=None, **kwargs):
-    if not os.path.exists(settings.WHOOSH):
-        os.mkdir(settings.WHOOSH)
-        #storage = store.FileStorage(settings.WHOOSH)
-        #ix = index.Index(storage, schema=WHOOSH_SCHEMA, create=True)
-        create_in(settings.WHOOSH, WHOOSH_SCHEMA)
+#def create_index(sender=None, **kwargs):
+    #if not os.path.exists(settings.WHOOSH):
+        #os.mkdir(settings.WHOOSH)
+        ##storage = store.FileStorage(settings.WHOOSH)
+        ##ix = index.Index(storage, schema=WHOOSH_SCHEMA, create=True)
+        #create_in(settings.WHOOSH, WHOOSH_SCHEMA)
 
 
 # not exists
@@ -661,27 +742,27 @@ def create_index(sender=None, **kwargs):
 
 
 
-def update_index(sender, instance, created, **kwargs):
-    #storage = filestore.FileStorage(settings.WHOOSH_INDEX)
-    #ix = index.Index(storage, schema=WHOOSH_SCHEMA)
-    ix = open_dir(settings.WHOOSH_INDEX)
-    writer = ix.writer()
-    if created:
-        writer.add_document(title=instance.title, content=instance.body,
-                                    url=instance.get_absolute_url())
-        writer.commit()
-    else:
-        writer.update_document(title=instance.title, content=instance.body,
-                                    url=instance.get_absolute_url())
-        writer.commit()
+#def update_index(sender, instance, created, **kwargs):
+    ##storage = filestore.FileStorage(settings.WHOOSH_INDEX)
+    ##ix = index.Index(storage, schema=WHOOSH_SCHEMA)
+    #ix = open_dir(settings.WHOOSH_INDEX)
+    #writer = ix.writer()
+    #if created:
+        #writer.add_document(title=instance.title, content=instance.body,
+                                    #url=instance.get_absolute_url())
+        #writer.commit()
+    #else:
+        #writer.update_document(title=instance.title, content=instance.body,
+                                    #url=instance.get_absolute_url())
+        #writer.commit()
 
-def index_add():
-    ix = open_dir(settings.WHOOSH_INDEX)
-    writer = ix.writer()
-    writer.add_document(title='Saxon-English man loses at tombola', content='A Whitworth man who bought a ticket for a tombola failed to win a prize',
-                                 url='filemanager/file/9')
-    ##writer.add_document(title='Brexit Politics', content='Policies criticised after national scandal',
-      #                            url='filemanager/file/2')
-    writer.commit()
-    print('added?')
-signals.post_save.connect(update_index, sender=File)
+#def index_add():
+    #ix = open_dir(settings.WHOOSH_INDEX)
+    #writer = ix.writer()
+    #writer.add_document(title='Saxon-English man loses at tombola', content='A Whitworth man who bought a ticket for a tombola failed to win a prize',
+                                 #url='filemanager/file/9')
+    ###writer.add_document(title='Brexit Politics', content='Policies criticised after national scandal',
+      ##                            url='filemanager/file/2')
+    #writer.commit()
+    #print('added?')
+#signals.post_save.connect(update_index, sender=File)
