@@ -5,7 +5,7 @@ from whoosh.qparser import QueryParser
 
 import time
 
-
+#! auto-init with this data
 class BaseManager:    
     def __init__(self, whoosh_base, whoosh_index, whoosh_schema):
         self._whoosh_base = whoosh_base
@@ -27,7 +27,8 @@ class Manager(BaseManager):
     '''
     A basic Whoosh manager.
     Every operation is self contained, and tidies after the action.
-    The operations are blocking.
+    Note that if multiple threads access the writing, any writing 
+    operation can throw an error.
     '''
     def __init__(self, whoosh_base, whoosh_index, whoosh_schema):
         super().__init__(whoosh_base, whoosh_index, whoosh_schema)
@@ -138,3 +139,96 @@ class Manager(BaseManager):
         ix.optimize()
         ix.close()
         
+import threading
+class BlockingManager(Manager):
+    '''
+    A basic Whoosh manager.
+    Every operation is self contained, and tidies after the action.
+    The operations are blocking.
+    '''
+    def __init__(self, whoosh_base, whoosh_index, whoosh_schema):
+        super().__init__(whoosh_base, whoosh_index, whoosh_schema)
+        self.threadLock = threading.Lock()
+        self.ix = open_dir(self._whoosh_base, self._whoosh_index)
+        
+    def bulk_add(self, it):
+        self.threadLock.acquire()
+        writer = self.ix.writer()
+        self.threadLock.release()
+        for e in it:
+            writer.add_document(e)
+        writer.commit()      
+
+    def add(self, **fields):
+        '''
+        Write a document.
+        Ignores keys not in schema. No data for unprovided schema keys.
+        
+        @param fields keys for the schema, values for values. 
+        '''
+        start = time.time()
+        self.threadLock.acquire()
+        end = time.time()
+        print('aquire', ' took', str(end - start), 'time')
+        writer = self.ix.writer()
+        self.threadLock.release()
+        writer.add_document(**fields)
+        writer.commit()
+        
+    def clear(self):
+        '''
+        Empty the index.
+        '''
+        self.threadLock.acquire()
+        #On fileStorage and RAMStorage, clean()
+        # Storage. Can only do on Filestorage.
+        #ix.storage.destroy()
+        self.ix.storage.clean()    
+        self.threadLock.release()
+
+    def delete(self, fieldname, text):
+        '''
+        Delete a document.
+        Match on any key.
+        
+        @param fieldname key to match against
+        @param text match value. 
+        '''
+        self.threadLock.acquire()
+        writer = self.ix.writer()
+        self.threadLock.release()
+        writer.delete_by_term(fieldname, text, searcher=None)
+        writer.commit()
+
+    def merge(self, **fields):
+        '''
+        Merge a document.
+        Ignores keys not in schema. No data for unprovided schema keys.
+        Checks for unique keys then matches against parameters.
+        Slower than add(). Will create if entry does not exist.
+        
+        @param fields keys for the schema, values for values. 
+        '''
+        self.threadLock.acquire()
+        writer = self.ix.writer()
+        self.threadLock.release()
+        writer.update_document(**fields)
+        writer.commit()
+
+    def read(self, query, callback):
+        r = None
+        with self.ix.searcher() as searcher:
+            start = time.time()
+            query = QueryParser("author", self._whoosh_schema).parse(query)
+            end = time.time()
+            print('query', ' took', str(end - start), 'time')
+            callback(searcher.search(query))
+
+    def size(self):
+        r = self.ix.doc_count()
+        return r
+    
+    def optimize(self):
+        self.threadLock.acquire()
+        self.ix.optimize()
+        self.threadLock.release()

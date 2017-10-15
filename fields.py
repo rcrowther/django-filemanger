@@ -72,7 +72,7 @@ class DateTimeField(DATETIME):
 
 class BooleanField(BOOLEAN):
     def __init__(self, stored=False, field_boost=1.0):
-        super().__init__(self, stored, field_boost)
+        super().__init__(stored, field_boost)
 
 class StoredField(STORED):
     def __init__(self):
