@@ -16,13 +16,11 @@ from .fields import TextField, IdField
 from .models import File
 
 #x Need the appname and modelname to make the index
+# better init of managers
 # how does Models auto-initiate?
-#x why not just build the schema init list?
-# meta declaration is horrible?
 # need the add/update triggers in there
 # and first-time build
 # options to be checked and go through
-#x(better...) full set of fields
 # and delete index what we have command.
 # stemming
 # absolute URL option
@@ -87,7 +85,8 @@ class WooshOptions:
     def __init__(self, app_label, module, class_name, options=None):
         self.whoosh_index = getattr(options, 'whoosh_index', None)
         if not self.whoosh_index:
-            self.whoosh_index = "{0}_{1}".format(app_label, class_name)   
+            self.whoosh_index = "{0}_{1}".format(app_label, class_name)  
+        self.whoosh_base = getattr(options, 'whoosh_base') 
         self.module = module
         self.class_name = class_name
         self.requested_fields = getattr(options, 'fields')
@@ -101,8 +100,9 @@ class WooshOptions:
         self.schema = None
 
     def __str__(self):
-        return "WooshOptions(whoosh_index:{0}, module:{1}, model:{2}, requested_fields:{3}, declared_fields:{4}, schema_fields:{5})".format(
+        return "WooshOptions(whoosh_index:{0}, whoosh_base:{1}, module:{2}, model:{3}, requested_fields:{4}, declared_fields:{5}, schema_fields:{6})".format(
         self.whoosh_index,
+        self.whoosh_base,
         self.module,
         self.model,
         self.requested_fields,
@@ -113,6 +113,12 @@ class WooshOptions:
 
 class WhooshMetaclass(DeclarativeFieldsMetaclass):
     def _validate_raw_opts(mcs, module, class_name, opts):
+        if not settings.WHOOSH:
+            raise TypeError("Whoosh class  {0}.{1} must have an available setting 'WHOOSH' to define the base folder.".format(
+                module,
+                class_name
+                )
+            )
         requested_fields = getattr(opts, 'fields', None)
         if requested_fields is None:
                 raise ImproperlyConfigured(
@@ -157,7 +163,7 @@ class WhooshMetaclass(DeclarativeFieldsMetaclass):
         if not exists_in(settings.WHOOSH, whoosh_index):
             create_in(settings.WHOOSH, whoosh_schema, whoosh_index)
 
-    
+
     def __new__(mcs, name, bases, attrs):
         print('new WhooshMetaclass : ' + name)
         super_new = super().__new__
@@ -198,7 +204,8 @@ class WhooshMetaclass(DeclarativeFieldsMetaclass):
             else:
                 app_label = app_config.label
         new_class._validate_raw_opts(module, name, opts)
-
+        opts.whoosh_base = settings.WHOOSH
+        
         # make the meta options class, filtering unwanted info
         clean_opts = new_class._meta = WooshOptions(app_label, module, name, opts) 
         
@@ -210,23 +217,28 @@ class WhooshMetaclass(DeclarativeFieldsMetaclass):
         whoosh_schema = new_class._meta.schema = fields.Schema(**schema_fields)
         print('new_class._meta:' + str(new_class._meta))
 
+        # if needed, create index folders
+        new_class._first_run(new_class._meta.whoosh_index, whoosh_schema) 
+        
         # set managers
-        managers = [k for k,v in attrs.items() if isinstance(v, BaseManager)]
+        managers = {k:v for k,v in attrs.items() if isinstance(v, BaseManager)}
         if (not managers):
             if 'actions' in attrs:
                 raise ImproperlyConfigured(
-                    "No manager on Whoosh class {0}.{1}, but an 'actions' attribute blocks auto-create.".format(module, name)
+                    "No manager on Whoosh class {0}.{1}, but an 'actions' attribute blocks auto-create.".format(
+                    module, 
+                    name
+                    )
                 )             
-            new_class.actions = BlockingManager(
-                settings.WHOOSH,
-                new_class._meta.whoosh_index,
-                whoosh_schema
-            )
-        
-        # if needed, create index folders
-        new_class._first_run(new_class._meta.whoosh_index, whoosh_schema) 
+            new_class.actions = BlockingManager()
+            managers = {'actions': new_class.actions}
+        for manager in managers.values():
+            manager.contribute_to_class(clean_opts)
+            
+
         return new_class
 
+        
         
 class Whoosh(metaclass=WhooshMetaclass):
     pass
@@ -255,11 +267,8 @@ class ModelWhooshMetaclass(WhooshMetaclass):
                     )
                 )              
 
-    #! check the fields
     def _schema_fields(mcs, opts):
-        print('schema fields')
         b = {}
-        #model_fieldmap = {field.name : field.__class__ for field in opts.model._meta.fields}
         for fieldname in opts.requested_fields:
             declared = opts.declared_fields.get(fieldname)
             if (declared):

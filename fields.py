@@ -56,7 +56,7 @@ class NumericField(NUMERIC):
                  field_boost, decimal_places, shift_step, signed,
                  sortable, default)   
 
-class IDListField(IDLIST):
+class IdListField(IDLIST):
     def __init__(self, stored=False, unique=False, expression=None,
                  field_boost=1.0):
         super().__init__(stored, unique, expression,

@@ -7,15 +7,19 @@ import time
 
 #! auto-init with this data
 class BaseManager:    
-    def __init__(self, whoosh_base, whoosh_index, whoosh_schema):
-        self._whoosh_base = whoosh_base
-        self._whoosh_index = whoosh_index
-        self._whoosh_schema = whoosh_schema
+    def __init__(self):
+        self._whoosh_base = None
+        self._whoosh_index = None
+        self._whoosh_schema = None
         self.model = None
         self.name = None
         
-    #def add_model_data(self, model):
-    #    self.model = model
+    def contribute_to_class(self, opts):
+        self._whoosh_base = opts.whoosh_base
+        self._whoosh_index = opts.whoosh_index
+        self._whoosh_schema = opts.schema
+        self.model = opts.model
+        #self.name = 
 
 
 #! change schema?
@@ -30,8 +34,8 @@ class Manager(BaseManager):
     Note that if multiple threads access the writing, any writing 
     operation can throw an error.
     '''
-    def __init__(self, whoosh_base, whoosh_index, whoosh_schema):
-        super().__init__(whoosh_base, whoosh_index, whoosh_schema)
+    def __init__(self):
+        super().__init__()
 
     def bulk_add(self, it):
         start = time.time()
@@ -146,8 +150,11 @@ class BlockingManager(Manager):
     Every operation is self contained, and tidies after the action.
     The operations are blocking.
     '''
-    def __init__(self, whoosh_base, whoosh_index, whoosh_schema):
-        super().__init__(whoosh_base, whoosh_index, whoosh_schema)
+    def __init__(self):
+        super().__init__()
+        
+    def contribute_to_class(self, opts):
+        super().contribute_to_class(opts)
         self.threadLock = threading.Lock()
         self.ix = open_dir(self._whoosh_base, self._whoosh_index)
         
