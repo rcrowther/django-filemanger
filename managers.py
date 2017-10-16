@@ -1,3 +1,4 @@
+import sys
 from whoosh import fields, index
 #from whoosh.filedb import filestore
 from whoosh.index import open_dir
@@ -12,6 +13,7 @@ class BaseManager:
         self._whoosh_index = None
         self._whoosh_schema = None
         self.model = None
+        self.pk_fieldname = None
         self.name = None
         
     def contribute_to_class(self, opts):
@@ -19,14 +21,15 @@ class BaseManager:
         self._whoosh_index = opts.whoosh_index
         self._whoosh_schema = opts.schema
         self.model = opts.model
+        self.pk_fieldname = opts.pk_field.name
         #self.name = 
-
 
 #! change schema?
 #! file locked version
 #! async version
 #! fuzzy search
 #!stem search
+#! delete using fieldname
 class Manager(BaseManager):
     '''
     A basic Whoosh manager.
@@ -84,7 +87,21 @@ class Manager(BaseManager):
         ix.storage.clean()    
         ix.close()
 
-    def delete(self, fieldname, text):
+    def delete(self, key):
+        '''
+        Delete a document.
+        Match on any key.
+        
+        @param fieldname key to match against
+        @param text match value. 
+        '''
+        ix = open_dir(self._whoosh_base, self._whoosh_index)
+        writer = ix.writer()
+        writer.delete_by_term(self.pk_fieldname, key, searcher=None)
+        writer.commit() 
+        ix.close() 
+        
+    def bulk_delete(self, fieldname, text):
         '''
         Delete a document.
         Match on any key.
@@ -116,7 +133,7 @@ class Manager(BaseManager):
         ix.close()
 
 
-    def read(self, query, callback):
+    def read(self, field, query, callback):
         start = time.time()
         end = time.time()
         print('opendir', ' took', str(end - start), 'time')
@@ -124,7 +141,7 @@ class Manager(BaseManager):
         r = None
         with ix.searcher() as searcher:
             start = time.time()
-            query = QueryParser("author", self._whoosh_schema).parse(query)
+            query = QueryParser(field, self._whoosh_schema).parse(query)
             #query = QueryParser("author", ix.schema).parse(query)
             #query = QueryParser("author").parse(query)
             end = time.time()
@@ -143,7 +160,66 @@ class Manager(BaseManager):
         ix.optimize()
         ix.close()
         
+class ManagerManager(Manager):
+    def clear(self):
+        '''
+        Empty the index.
+        '''
+        self.ix.storage.clean()    
+
+    def optimize(self):
+        self.ix.optimize()
+    
+
+        
 import threading
+
+# Pointer to the module object instance, for module-wide storage.
+# https://stackoverflow.com/questions/1977362/how-to-create-module-wide-variables-in-python#1978076
+this = sys.modules[__name__]
+
+this.blocking_lock = None
+# map of path to file_desciptor (whoosh index)
+this.ix_registry = {}
+
+class RegistryInfo():
+    def __init__(self, directory, lock):
+        self.directory = directory
+        self.lock = lock
+        
+def assert_index_registry(base, index):
+    path = "{0}_{1}".format(base, index)
+    if (path not in this.ix_registry):
+            this.ix_registry[path] = RegistryInfo(open_dir(base, index), threading.Lock())
+    return this.ix_registry[path]
+    
+class BlockingManagerManager(Manager):
+    def contribute_to_class(self, opts):
+        super().contribute_to_class(opts)
+        #self.threadLock = threading.Lock()
+        #self.ix = open_dir(self._whoosh_base, self._whoosh_index)
+        info = assert_index_registry(self._whoosh_base, self._whoosh_index)
+        self.ix = info.directory
+        self.threadLock = info.lock
+        
+    def clear(self):
+        '''
+        Empty the index.
+        '''
+        self.threadLock.acquire()
+        #On fileStorage and RAMStorage, clean()
+        # Storage. Can only do on Filestorage.
+        #ix.storage.destroy()
+        self.ix.storage.clean()    
+        self.threadLock.release()
+
+    def optimize(self):
+        self.threadLock.acquire()
+        self.ix.optimize()
+        self.threadLock.release()
+        
+        
+                
 class BlockingManager(Manager):
     '''
     A basic Whoosh manager.
@@ -182,18 +258,21 @@ class BlockingManager(Manager):
         writer.add_document(**fields)
         writer.commit()
         
-    def clear(self):
+    def delete(self, key):
         '''
-        Empty the index.
+        Delete a document.
+        Match on any key.
+        
+        @param fieldname key to match against
+        @param text match value. 
         '''
         self.threadLock.acquire()
-        #On fileStorage and RAMStorage, clean()
-        # Storage. Can only do on Filestorage.
-        #ix.storage.destroy()
-        self.ix.storage.clean()    
+        writer = self.ix.writer()
         self.threadLock.release()
+        writer.delete_by_term(self.pk_fieldname, key, searcher=None)
+        writer.commit()
 
-    def delete(self, fieldname, text):
+    def bulk_delete(self, fieldname, text):
         '''
         Delete a document.
         Match on any key.
@@ -206,7 +285,7 @@ class BlockingManager(Manager):
         self.threadLock.release()
         writer.delete_by_term(fieldname, text, searcher=None)
         writer.commit()
-
+        
     def merge(self, **fields):
         '''
         Merge a document.
@@ -222,11 +301,11 @@ class BlockingManager(Manager):
         writer.update_document(**fields)
         writer.commit()
 
-    def read(self, query, callback):
+    def read(self, field, query, callback):
         r = None
         with self.ix.searcher() as searcher:
             start = time.time()
-            query = QueryParser("author", self._whoosh_schema).parse(query)
+            query = QueryParser(field, self._whoosh_schema).parse(query)
             end = time.time()
             print('query', ' took', str(end - start), 'time')
             callback(searcher.search(query))
@@ -235,7 +314,3 @@ class BlockingManager(Manager):
         r = self.ix.doc_count()
         return r
     
-    def optimize(self):
-        self.threadLock.acquire()
-        self.ix.optimize()
-        self.threadLock.release()

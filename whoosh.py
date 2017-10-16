@@ -15,24 +15,22 @@ from .managers import BaseManager, Manager, BlockingManager
 from .fields import TextField, IdField
 from .models import File
 
-#x Need the appname and modelname to make the index
-# better init of managers
-# how does Models auto-initiate?
 # need the add/update triggers in there
 # and first-time build
 # options to be checked and go through
 # and delete index what we have command.
 # stemming
 # absolute URL option
-
+# autofield automatic inclusion if present?
       
-#! one needs to be 'unrecognised'?
 def default_woosh_field(klass):
     '''
     Given a Model Field, return a guess for a Whoosh field.
     A rough-guess at likely sense, not a definition of what
     can be done.
     '''
+    if (klass == models.AutoField): 
+        return IdField(unique=True)
     if (klass == models.CharField):
         return TextField(stored=True)
     if (
@@ -94,8 +92,10 @@ class WooshOptions:
         self.model = getattr(options, 'model', None)
         if (self.model):
             self.model_fieldmap = {field.name : field.__class__ for field in self.model._meta.fields}
+            self.pk_field = self.model._meta.pk
         else:
             self.model_fieldmap = None
+            self.pk_field = None
         self.schema_fields = []
         self.schema = None
 
@@ -229,9 +229,10 @@ class WhooshMetaclass(DeclarativeFieldsMetaclass):
                     module, 
                     name
                     )
-                )             
-            new_class.actions = BlockingManager()
-            managers = {'actions': new_class.actions}
+                ) 
+        if (not 'actions' in managers):
+            new_class.actions = Manager()
+            managers['actions'] = new_class.actions
         for manager in managers.values():
             manager.contribute_to_class(clean_opts)
             
@@ -267,9 +268,12 @@ class ModelWhooshMetaclass(WhooshMetaclass):
                     )
                 )              
 
-    def _schema_fields(mcs, opts):
+    def _schema_fields(mcs, opts):        
+        # add the pk field if missing
+        fields_to_use = set(opts.requested_fields)
+        fields_to_use.add(opts.pk_field.name)
         b = {}
-        for fieldname in opts.requested_fields:
+        for fieldname in fields_to_use:
             declared = opts.declared_fields.get(fieldname)
             if (declared):
                 b[fieldname] = declared
@@ -279,6 +283,7 @@ class ModelWhooshMetaclass(WhooshMetaclass):
                 if defaulted:
                     b[fieldname] = defaulted
                 else:
+                    #? special note for pk fields?
                     raise ImproperlyConfigured(
                         "Whoosh class {0}.{1} requested field '{2}' not declared and can not be defaulted.".format(
                         opts.module,
@@ -286,6 +291,8 @@ class ModelWhooshMetaclass(WhooshMetaclass):
                         fieldname
                         )
                     )
+            if (fieldname == opts.pk_field.name):
+                b[fieldname].stored = True
         return b
         
     def __new__(mcs, name, bases, attrs):
