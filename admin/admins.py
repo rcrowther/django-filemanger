@@ -5,13 +5,18 @@ from django.conf.urls import url
 from django.shortcuts import render
 
 from django.forms import ModelForm
-from ..models import File
 
 from django import forms
 from django.urls import reverse
 from django.contrib import messages
 import os
 from django.conf import settings
+from ..models import File
+
+from ..db.physicaldb import DB
+
+db = DB(os.path.join(settings.BASE_DIR, 'uploads'))
+
 
 class FileForm(ModelForm):
     class Meta:
@@ -55,7 +60,7 @@ def file_add(request):
     #  link('Term List', reverse('term-list', args=[bm.pk])),
     #  ],
     #'submit': {'message':"Save", 'url': reverse('filemanager-add')},
-    'submit': {'message':"Save", 'url': '/admin/filemanager/file/add'},
+    'submit': {'message':"Save", 'url': '/admin/filemanager/file/add/'},
     
     #'submit': {'message':"Save"},
     'actions': [],
