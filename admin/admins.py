@@ -16,7 +16,7 @@ from ..models import File
 from ..db.physicaldb import DB
 
 db = DB(os.path.join(settings.BASE_DIR, 'uploads'))
-
+coll = db.images
 
 class FileForm(ModelForm):
     class Meta:
@@ -31,7 +31,12 @@ def store_uploaded_file(dst, f):
     with open(dst, 'wb+') as dst:
         for chunk in f.chunks():
             dst.write(chunk)
-            
+
+def uploaded_file_move_to_db(src, dst):
+    with open(dst, 'wb+') as f:
+        for chunk in src.chunks():
+            f.write(chunk)
+                        
 def file_add(request):
     if request.method == 'POST':
         f = FileForm(request.POST, request.FILES)
@@ -40,9 +45,10 @@ def file_add(request):
             #print(str(f.cleaned_data))
             #print(f.cleaned_data['path'].name)
             #print(str(request.FILES))
-            final_path = os.path.join(settings.MEDIA_ROOT, f.cleaned_data['path'].name)
-            store_uploaded_file(final_path, f.cleaned_data['path'])
-            
+            #final_path = os.path.join(settings.MEDIA_ROOT, f.cleaned_data['path'].name)
+            #store_uploaded_file(final_path, f.cleaned_data['path'])
+            coll.create_cb(f.cleaned_data['path'], uploaded_file_move_to_db)
+
             #fm = File.system.save(
                 #name=f.cleaned_data['name'], 
                 #path=final_path, 

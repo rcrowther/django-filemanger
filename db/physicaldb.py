@@ -389,15 +389,16 @@ class Collection(CollectionBase):
     def document_path(self, idx):
         return os.path.join(self.path, self._bucket_from_pk(idx), str(idx))
                     
-    #-
-    #def create(data):
-        #self.header.next_pk()
-        #self.update(self.header.last_pk, data)
-        #self.header.size_inc()
+                    
+                    
+    def create(data):
+        self.header.next_id()
+        self.update(self.header.last_id, data)
+        self.header.size_inc()
 
-    def create_cb(self, pk, data_create_callback):
-        self.header.next_pk()
-        self.update_cb(self.header.last_pk, data_create_callback)
+    def create_cb(self, src, data_create_callback):
+        self.header.next_id()
+        self.update_cb(self.header.last_id, src, data_create_callback)
         self.header.size_inc()
 
     def read(self, pk):
@@ -414,7 +415,7 @@ class Collection(CollectionBase):
         with open(path, self.write_format) as f:
             f.write(data)
 
-    def update_cb(self, pk, data_create_callback):
+    def update_cb(self, pk, src, data_create_callback):
         '''
         Write an element.
         The method will not create the data, but ensures data can be
@@ -427,7 +428,7 @@ class Collection(CollectionBase):
         bp = self._bucket_path_from_pk(pk)
         os.makedirs(bp, exist_ok=True)
         path = os.path.join(bp, str(pk))
-        data_create_callback(path)
+        data_create_callback(src, path)
 
     def delete(self, pk):
         assert isinstance(pk, int), "Not an integer"
