@@ -6,15 +6,42 @@ import math
 
 from .header import Header, DEFAULT_BUCKET_SIZE
 
+
+
+
 class Derived:
+    '''
+    Derived collections are a place to store modifications of files.
+    Modifications of files are commonly used/required on websites. 
+    Examples would be a short extract from a soundfile, or a thumbnail 
+    of an image.
+    The approach of this manager is not to modify material 
+    supplied. The manager stashes the original data, and 
+    provides methods to handle the production and storage of derived
+    files. This is more expensive than modifying on input, but respects
+    user information and allows the manager to be used for
+    archiving.
+    On disc, this implementation stores derived folders in subfolders of
+    the bucket folders.
+    The API treats derived files casually (unlike the original
+    files). Derived files can be generated or deleted at any time and 
+    deleted in bulk. An important feature is that all derived files must
+    be given a 'type'. The type is a string of your choosing (derived 
+    'types' are not checked or vaildated). A derived type might be, 
+    for example, 'teaser' for a textfile, 'snippet' for soundfiles, or 
+    '32x32' for image thumbnails. The 'type' makes bulk creation and 
+    deletion fast and non-disruptive.
+    '''
     def __init__(self, db):
         self.db = db
         
     def _derived_path_from_pk(self, typ, pk):
-        return os.path.join(self.db._path, self.db._bucket_from_pk(pk), 'derived', typ)
+        #?
+        return os.path.join(self.db._bucket_path_from_pk(pk), 'derived', typ)
                 
     def path(self, typ, pk):
-        return os.path.join(self.db._path, self.db._bucket_from_pk(pk), 'derived', typ, str(pk))
+        #?
+        return os.path.join(self.db._bucket_path_from_pk(pk), 'derived', typ, str(pk))
                       
     def write_cb(self, typ, pk, data_create_callback):
         '''
@@ -116,10 +143,13 @@ class DB():
         DB.fireworks
     if you intend to do much manipulation in one shot, stash, ::
         coll = DB.fireworks
-    If a database is corrupt, it may not load Collections. Use the 
-    rescue method(), ::
+    If a database is corrupt, it may not load auto-load damaged 
+    Collections. Use the rescue method() to return a (dummy, it has no 
+    content modification methods) RebuildCollection, ::
         rebuild_collection = DB.rescue('fireworks') 
-    and go to work with the .manager. See manager in Collection.
+    and go to work with the .manager e.g. ::
+        rebuild_collection.manage.rebuild_header(is_binary=True)
+    See manager in Collection.
     ''' 
     def __init__(self, path):
         self.path = path
@@ -299,7 +329,7 @@ class Manager():
       
     def rebuild_size(self):
         '''
-        Rest the header to a count of physical files.
+        Reset the header to a count of physical files.
         (may not be the same as the auto-pk count due to deletions)
         '''
         self.coll.header.size = self.size()
@@ -360,19 +390,23 @@ class RebuildCollection(CollectionBase):
 class Collection(CollectionBase):
     '''
     Represents a collection in the DB.
-    Has a CRUD interface for updating.
+    Has a CRUD interface for updating. The methods auto_create() and
+    auto_create_cb() will auto-generate ids. If you wish to supply uour 
+    own pks, use create() and create_cb().
+    Update commands (simply) overwrite existing files, creating if 
+    necessary. If used for creation, they will not maintain header
+    data correctly (assuming collection size() is unchanged, etc.)
     Collections are designated binary or text on creation.
     Administration is via. ::
         collection.manager
-    that gives access to rebuild_header(), bucket_size_change(), 
-    and disk_storage_size() etc. methods.
+    that gives access to methods like rebuild_header(), 
+    bucket_size_change(), and disk_storage_size().
     Header info on the collection is available at, :: 
         <collection>.header
-    that can be altered by assignment.
+    The header can be altered by assignment.
     Collections contain a second manager, ::
         <collection>.derived
     for subcollections of derived files.
-    
     '''
     def __init__(self, name, path, header_path, header):
         super().__init__(name, path, header_path)
@@ -385,22 +419,60 @@ class Collection(CollectionBase):
             self.read_format = 'rb'
             self.write_format = 'wb'
 
-
     def document_path(self, idx):
-        return os.path.join(self.path, self._bucket_from_pk(idx), str(idx))
+        #?
+        #return os.path.join(self.path, self._bucket_from_pk(idx), str(idx))
+        return os.path.join(self._bucket_path_from_pk(idx), str(idx))
                     
-                    
-                    
-    def create(data):
-        self.header.next_id()
-        self.update(self.header.last_id, data)
+    def create(pk, data):
+        '''
+        Create a new document, using supplied pk.
+        '''
+        path = self.update(pk, data)
+        self.header.last_id = pk
         self.header.size_inc()
+        return path      
 
-    def create_cb(self, src, data_create_callback):
-        self.header.next_id()
-        self.update_cb(self.header.last_id, src, data_create_callback)
+    def create_cb(self, pk, src, data_create_callback):
+        '''
+        Create a new document, using supplied pk.
+        This method will not create the data, but ensures data can be
+        created at the path passed to the callback. For consistency,
+        the callback should overwrite existing contents, and create
+        if necessary ('w+' and 'wb+').
+        
+        @param pk id to write at
+        @param data_create_callback signature <callback name>(src, dst).
+        '''
+        path = self.update_cb(pk, src, data_create_callback)
+        self.header.last_id = pk
         self.header.size_inc()
-
+        return path
+                
+    def auto_create(data):
+        '''
+        Create a new document, using auto-id generation.
+        '''
+        self.header.next_id()
+        path = self.update(self.header.last_id, data)
+        self.header.size_inc()
+        return path
+        
+    def auto_create_cb(self, src, data_create_callback):
+        '''
+        Create a new document, using auto-id generation.
+        This method will not create the data, but ensures data can be
+        created at the path passed to the callback. For consistency,
+        the callback should overwrite existing contents, and create
+        if necessary ('w+' and 'wb+').
+        
+        @param data_create_callback signature <callback name>(src, dst).
+        '''
+        self.header.next_id()
+        path = self.update_cb(self.header.last_id, src, data_create_callback)
+        self.header.size_inc()
+        return path
+        
     def read(self, pk):
         assert isinstance(pk, int), "Not an integer"
         with open(self.document_path(pk), self.read_format) as f:
@@ -408,28 +480,38 @@ class Collection(CollectionBase):
         return o
         
     def update(self, pk, data):
+        '''
+        Write an element.
+        Overwrites existing content, creates if necessary.
+
+        @param pk id to write at
+        '''
         assert isinstance(pk, int), "Not an integer"
         bp = self._bucket_path_from_pk(pk)
         os.makedirs(bp, exist_ok=True)
         path = os.path.join(bp, str(pk))
         with open(path, self.write_format) as f:
             f.write(data)
+        return path
 
     def update_cb(self, pk, src, data_create_callback):
         '''
         Write an element.
-        The method will not create the data, but ensures data can be
-        created at the path passed to the callback.
+        This method will not create the data, but ensures data can be
+        created at the path passed to the callback. For consistency,
+        the callback should overwrite existing contents, and create
+        if necessary ('w+' and 'wb+').
         
         @param pk id to write at
-        @param data_create_callback receives the path allocated for the data.
+        @param data_create_callback signature <callback name>(src, dst).
         '''
         assert isinstance(pk, int), "Not an integer"
         bp = self._bucket_path_from_pk(pk)
         os.makedirs(bp, exist_ok=True)
         path = os.path.join(bp, str(pk))
         data_create_callback(src, path)
-
+        return path
+        
     def delete(self, pk):
         assert isinstance(pk, int), "Not an integer"
         os.remove(self.document_path(pk))   

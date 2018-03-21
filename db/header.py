@@ -120,7 +120,7 @@ class Header():
     is_binary = property(_get_is_binary, _set_is_binary)
 
     def __repr__(self):
-        return '{0}-{1}-{2}-{3}'.format(
+        return '<Header last_id:{0}, bucket_size:{1}, size:{2}, is_binary:{3}>'.format(
             self._last_id,
             self._bucket_size,
             self._size,

@@ -1,3 +1,5 @@
+import os
+
 from django.contrib import admin
 from django.conf.urls import url
 
@@ -9,11 +11,14 @@ from django.forms import ModelForm
 from django import forms
 from django.urls import reverse
 from django.contrib import messages
-import os
 from django.conf import settings
-from ..models import File
 
+from quickviews import views
+from ..models import File
 from ..db.physicaldb import DB
+
+
+#! not adding the index stuff.
 
 db = DB(os.path.join(settings.BASE_DIR, 'uploads'))
 coll = db.images
@@ -21,92 +26,119 @@ coll = db.images
 class FileForm(ModelForm):
     class Meta:
         model = File
-        fields = ['name', 'path', 'author']
+        fields = ['name', 'description', 'author']
         #widgets={'path': forms.FileInput(attrs={'multiple': True})}
         #clean()
         
         
-        
-def store_uploaded_file(dst, f):
-    with open(dst, 'wb+') as dst:
-        for chunk in f.chunks():
-            dst.write(chunk)
 
 def uploaded_file_move_to_db(src, dst):
     with open(dst, 'wb+') as f:
         for chunk in src.chunks():
             f.write(chunk)
                         
-def file_add(request):
-    if request.method == 'POST':
-        f = FileForm(request.POST, request.FILES)
-        if f.is_valid():
-            #f.save()
-            #print(str(f.cleaned_data))
-            #print(f.cleaned_data['path'].name)
-            #print(str(request.FILES))
-            #final_path = os.path.join(settings.MEDIA_ROOT, f.cleaned_data['path'].name)
-            #store_uploaded_file(final_path, f.cleaned_data['path'])
-            coll.create_cb(f.cleaned_data['path'], uploaded_file_move_to_db)
+class FileCreate(views.ModelCreate):
+    model = File
+    form_class = FileForm
+    object_title_field = 'name'
 
-            #fm = File.system.save(
-                #name=f.cleaned_data['name'], 
-                #path=final_path, 
-                #author=f.cleaned_data['author']
-                #) 
-            #msg = tmpl_instance_message("Added File", fm.name)
-            msg = "Added File"
-            messages.add_message(request, messages.SUCCESS, msg)       
-    else:
-        f = FileForm()
-    context={
-    'form': f,
-    'title': 'Add File',
-    #'navigators': [
-    #  link('Term List', reverse('term-list', args=[bm.pk])),
-    #  ],
-    #'submit': {'message':"Save", 'url': reverse('filemanager-add')},
-    'submit': {'message':"Save", 'url': '/admin/filemanager/file/add/'},
-    
-    #'submit': {'message':"Save"},
-    'actions': [],
-    } 
-    return render(request, 'filemanager/generic_form.html', context)
 
-def manage_files(request, file_id):
-    fm = File.objects.get(pk=file_id)
-    if request.method == 'POST':
-        f = FileForm(request.POST, request.FILES)
-        if f.is_valid():
-            #fm = File.system.update(
-                #name=f.cleaned_data['name'], 
-                #author=f.cleaned_data['author']
-                #) 
-            #msg = tmpl_instance_message("Updated File", fm.name)
-            msg = "Updated File"
-            messages.add_message(request, messages.SUCCESS, msg)
-            print(str(f.clean_data))
-    else:
-        f = FileForm()
+    def create(self, cleaned_data):
+        print('create_object')
+        print(str(cleaned_data))
+        #! dont know size until physical save
+        #! don't know pk until text save
+        obj = File.system.create(
+            name=cleaned_data['name'], 
+            description=cleaned_data['description'],
+            path='uploads/images/0/', 
+            author=cleaned_data['author'],
+            #size=cleaned_data['size'],
+            size=2000,
+            #licence=cleaned_data['licence']
+            licence='fleece'
+        ) 
+        # use the file pk, not an auto-generated one.
+        #pk = cleaned_data['pk']
+        #coll.create_cb(pk, cleaned_data['path'], uploaded_file_move_to_db)
+        return obj
         
-    context={
-    'form': f,
-    'title': 'Add Term',
-    #'navigators': [
-    #  link('Term List', reverse('term-list', args=[bm.pk])),
-    #  ],
-    'submit': {'message':"Save", 'url': reverse('filemanager-update', args=[file_id])},
-    #'submit': {'message':"Save"},
-    'actions': [],
-    } 
-    return render(request, 'filemanager/generic_form.html', context)
+
+class FileUpdate(views.ModelUpdate):
+    model = File
+    form_class = FileForm
+    object_title_field = 'name'
+
+    def get_objects(self, url_args):
+        print('get_objects')
+        print(str(url_args))
+        return File.objects.get(pk = url_args['file_id'])
+        
+    def update(self, pk, cleaned_data):
+        print('update_object')
+        print(str(cleaned_data))
+        print(str(pk))
+        obj = File.system.update(
+              pk=pk,
+              name=cleaned_data['name'], 
+              description=cleaned_data['description'],
+              path='uploads/images/0/', 
+              author=cleaned_data['author'],
+              #size=cleaned_data['size'],
+              size=2000,
+              #licence=cleaned_data['licence']
+              licence='fleece'
+        )
+        return obj
+
+
+
+class FileDelete(views.ModelDeleteConfirm):
+    model = File
+    object_title_field = 'name' 
+    #success_redirect = reverse('filemanager-search')
+    #success_redirect = '/admin/filemanager/file/search'
+    message_directions = '<p>Deleting a file will not remove associated physical files.</p>'
+    success_redirect_as_admin_base = True
+    
+    def get_objects(self, url_args):
+        print('get_objects')
+        print(str(url_args))
+        return File.objects.get(pk = url_args['file_id'])
+
+    def get_context_data(self, request, ctx):
+        ctx = super().get_context_data(request, ctx)
+        return_link = views.link('No, take me back', ctx['view'].get_admin_base_url(), attrs={'class':'"button"'})
+        ctx['actions'].append(return_link)
+        return ctx 
+
+    def modify(self, obj):
+        print('delete_object')
+        print(str(obj))
+        obj.delete()
+
+
+
+from need import SearchHitView
+from ..need import FileNeed
+
+class FileSearchHitView(SearchHitView):
+    need = FileNeed
+    search_fields = 'name'
+
+    def indexdata_to_renderdata(self, result):
+        return {'url' : "/admin/filemanager/file/{}".format(result['id']), 'title': result['name'], 'teaser': result['description']}
+  
 
 class FileAdmin(admin.ModelAdmin):
     def get_urls(self):
         urls = super(FileAdmin, self).get_urls()
         new_urls = [
-          url(r'^(?P<file_id>[0-9]+)/$', manage_files, name='filemanager-update'),
-          url(r'^add/$', file_add, name='filemanager-add'),
+          url(r'^$', FileSearchHitView.as_view(), name='filemanager-search'),
+          url(r'^(?P<file_id>[0-9]+)/delete/$', FileDelete.as_view(), name='filemanager-delete'),
+          url(r'^(?P<file_id>[0-9]+)/edit/$', FileUpdate.as_view(), name='filemanager-update'),
+          url(r'^add/$', FileCreate.as_view(), name='filemanager-add'),
+          url(r'^search/$', FileSearchHitView.as_view(), name='filemanager-search'),
         ]
-        print (str(new_urls + urls))
+        #print (str(new_urls + urls))
         return new_urls + urls   #+ super(FileAdmin, self).get_urls()

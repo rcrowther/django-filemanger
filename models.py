@@ -72,10 +72,45 @@ class PipeEffect(models.Model):
     system = PipeEffectManager()
 
 
-
+import datetime
 class FileManager(models.Manager):
-    pass    
-    
+    def create(self, name, description, path, author, size, licence):
+      '''
+      Create a file.
+      @param parent_pk an array of pk
+      @return the created term model.
+      '''
+      o = File( 
+        name=name,
+        description=description,
+        path=path,
+        author=author,
+        size=size,
+        lcns=licence
+        )
+      o.save()
+      return o
+
+
+    def update(self, pk, name, description, path, author, size, licence):
+      '''
+      Create a file.
+      @param parent_pk an array of pk
+      @return the created term model.
+      '''
+      o = File( 
+        pk=pk,
+        name=name,
+        description=description,
+        path=path,
+        date=datetime.datetime.now(),
+        mod_date=datetime.datetime.now(),
+        author=author,
+        size=size,
+        lcns=licence
+        )
+      o.save()
+      return o    
     
 class File(models.Model):
     name = models.CharField(
@@ -99,6 +134,7 @@ class File(models.Model):
       )
     
     # uneditable, visible
+    #! smaller name
     mod_date = models.DateTimeField(
       'date last modified.',
       auto_now_add=True
@@ -124,6 +160,7 @@ class File(models.Model):
       )
        
     lcns = models.CharField(
+      'license',
       max_length=64,
       blank=True, 
       default='',
@@ -134,20 +171,21 @@ class File(models.Model):
     system = FileManager()
 
     def __str__(self):
-      return "{0}".format(
+      return "{0}-{1}".format(
+      self.pk,
       self.name, 
       )
 
 
-class BucketFile(models.Model):
-    bucket = models.IntegerField(
-      help_text="Index of physical location of a file.",
-      )
+#class BucketFile(models.Model):
+    #bucket = models.IntegerField(
+      #help_text="Index of physical location of a file.",
+      #)
       
-    f = models.ForeignKey(
-      File,
-      verbose_name="file",
-      on_delete=models.CASCADE,
-      help_text="File with a location.",
-      )
+    #f = models.ForeignKey(
+      #File,
+      #verbose_name="file",
+      #on_delete=models.CASCADE,
+      #help_text="File with a location.",
+      #)
 
