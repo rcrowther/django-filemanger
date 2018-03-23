@@ -9,9 +9,7 @@ import os
 from django.forms import ModelForm
 from .models import File
 
-
-
-
+####
 ## Overall
 # different folders for different roles?
 # same name differentiation?
@@ -49,14 +47,14 @@ from .models import File
 # should apply the extension?
 # multi-upload?
 
-from django.conf import settings
+#from django.conf import settings
 #from django.views.generic.simple import direct_to_template
 #from whoosh import index, fields
 #from whoosh.filedb import filestore
 #from whoosh.qparser import QueryParser
 #from .whoosh import WHOOSH
 #from whoosh.index import open_dir
-from . import whoosh
+#from . import whoosh
 
 # visuals
 # stemming

@@ -58,7 +58,6 @@ class Header():
     def load(self):
         if (not os.path.exists(self.path)):
             # don't try to ride this, in case of accidental deletion
-            print('ow')
             raise FileNotFoundError('missing header file for physical database: looked in {0}'.format(
                 self.path
                 ))

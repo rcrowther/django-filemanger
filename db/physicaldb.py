@@ -1,11 +1,9 @@
 import os
-from django.conf import settings
 import shutil
 import math
-
-
+import collections
+#from django.conf import settings
 from .header import Header, DEFAULT_BUCKET_SIZE
-
 
 
 
@@ -299,9 +297,10 @@ class Manager():
         # generated paths should be resolved to lists. Otherwise, we risk
         # horrors like recursive file generation, walking new file sets...
         bpaths = list(self.coll._bucketpaths())
-        data = {}
-        for bpath in bpaths:
-            data[bpath] = list(self.coll._idpaths(bpath))
+        #data = {}
+        #for bpath in bpaths:
+        #    data[bpath] = list(self.coll._idpaths(bpath))
+        data = { bpath : list(self.coll._idpaths(bpath)) for bpath in bpaths}
         for bucketpath, old_paths in data.items():
             for old_path in old_paths:
                 pk = self._document_path_to_id_str(old_path)  
@@ -311,10 +310,38 @@ class Manager():
                     # make sure directory is there...
                     os.makedirs(new_bucket_path, exist_ok=True)
                     os.rename(old_path, new_path) 
-                    yield (old_path, new_path)
-
-    #def defragment(self):
-    
+                    yield (old_path, new_path) 
+                
+    def ids_compact(self):
+        '''
+        Compact the bucket contents and id sequence.
+        Consider: this method will delete derived material, and may be
+        expensive to use.
+        The method will create missing buckets.
+        The method is a generator which must be iterated.
+        @yield tuples of ids moved (from, to)
+        '''
+        self.coll.derived.clear()
+        # generated paths should be resolved to lists. Otherwise, we risk
+        # horrors like recursive file generation, walking new file sets...
+        bpaths = list(self.coll._bucketpaths_sorted())
+        current_id = 0
+        for bpath in bpaths:
+            epaths = self.coll._idpaths_sorted(bpath)
+            for edata in epaths:
+                new_path = self.coll.asserted_document_path(current_id)
+                # move with a little protection
+                #? 'rename' fails  on Windows if an errant file exists
+                #? should catch this? logger?
+                if (edata.path != new_path):
+                    os.rename(edata.path, new_path)
+                    #print('move' + edata.path + ': ' + new_path)
+                    yield (edata.id, current_id)
+                current_id += 1
+        self.coll.header.last_id=current_id - 1
+        # can be here positivly asserted        
+        self.coll.header.size=current_id       
+                        
     def clear(self):
         shutil.rmtree(self.coll.path)
 
@@ -342,8 +369,10 @@ class Manager():
         return sum(os.path.getsize(path) for path in self._paths_all())
                                    
 
+EntryData = collections.namedtuple('EntryData', 'id path')
 
 class CollectionBase():
+
     def __init__(self, name, path, header_path):
         self.name = name
         self.path = path
@@ -355,23 +384,70 @@ class CollectionBase():
         return os.path.join(self.path, str(bucket_id))
 
     def _bucketpaths(self):
+        '''
+        Generator of paths to buckets.
+        Filters for directories. Arbitary order. 
+        '''
         for bucket_id in os.listdir(self.path):
           p = os.path.join(self.path, bucket_id)
           if (os.path.isdir(p)):
             yield p 
 
+    def _bucketpaths_sorted(self):
+        '''
+        Generator of paths to buckets.
+        Filters for directories with names coercable to int(). Ordered. 
+        '''
+        bucket_names = os.listdir(self.path)
+        bucket_ids = []
+        for name in bucket_names:
+            try:
+                bucket_ids.append(int(name))
+            except ValueError:
+                pass
+        bucket_ids.sort()
+
+        for bid in bucket_ids:
+            p = os.path.join(self.path, str(bid))
+            if (os.path.isdir(p)):
+                yield p 
+            
     def _bucket_id_from_pk(self, pk):
         return str(math.floor(pk / self.header.bucket_size))
 
     def _bucket_path_from_pk(self, pk):
         return os.path.join(self.path, self._bucket_id_from_pk(pk))
-
+        
     def _idpaths(self, bucketpath):
+        '''
+        Generator of paths to files in a bucketpath.
+        Filters for files. Arbitary order. 
+        '''
         for file_id in os.listdir(bucketpath):
           p = os.path.join(bucketpath, file_id)
           if (os.path.isfile(p)):
             yield p 
-            
+
+    
+    def _idpaths_sorted(self, bucketpath):
+        '''
+        Generator of paths to files in a bucketpath.
+        Filters for entry files with names coercable to int(). Ordered. 
+        '''
+        entry_names = os.listdir(bucketpath)
+        entry_ids = []
+        for name in entry_names:
+            try:
+                entry_ids.append(int(name))
+            except ValueError:
+                pass
+        entry_ids.sort()
+
+        for eid in entry_ids:
+            p = os.path.join(bucketpath, str(eid))
+            if (os.path.isfile(p)):
+                yield EntryData(eid, p)             
+
 
 class RebuildCollection(CollectionBase):
     def __init__(self, name, path, header_path):
@@ -391,8 +467,8 @@ class Collection(CollectionBase):
     '''
     Represents a collection in the DB.
     Has a CRUD interface for updating. The methods auto_create() and
-    auto_create_cb() will auto-generate ids. If you wish to supply uour 
-    own pks, use create() and create_cb().
+    auto_create_cb() will auto-generate ids. Ids are numbered from 0. If
+    you wish to supply pks, use create() and create_cb().
     Update commands (simply) overwrite existing files, creating if 
     necessary. If used for creation, they will not maintain header
     data correctly (assuming collection size() is unchanged, etc.)
@@ -419,59 +495,140 @@ class Collection(CollectionBase):
             self.read_format = 'rb'
             self.write_format = 'wb'
 
-    def document_path(self, idx):
-        #?
-        #return os.path.join(self.path, self._bucket_from_pk(idx), str(idx))
-        return os.path.join(self._bucket_path_from_pk(idx), str(idx))
-                    
+    def document_path(self, pk):
+        return os.path.join(self._bucket_path_from_pk(pk), str(pk))
+
+    def asserted_document_path(self, pk):
+        '''
+        Path with guaranteed existing bucket folder structure.
+        Will make the folder structure if it does not exist.
+        '''
+        assert isinstance(pk, int), "Not an integer"
+        bp = self._bucket_path_from_pk(pk)
+        os.makedirs(bp, exist_ok=True)
+        return os.path.join(bp, str(pk))
+        
     def create(pk, data):
         '''
         Create a new document, using supplied pk.
+        This method will destroy data with pks following the given pk.
+        Data destruction will make sizes inaccurate.
         '''
         path = self.update(pk, data)
         self.header.last_id = pk
         self.header.size_inc()
         return path      
 
-    def create_cb(self, pk, src, data_create_callback):
+    #def create_cb(self, pk, src, data_create_callback):
+        #'''
+        #Create a new document, using supplied pk.
+        #This method will not create the data, but ensures data can be
+        #created at the path passed to the callback. For consistency,
+        #the callback should overwrite existing contents, and create
+        #if necessary ('w+' and 'wb+').
+        
+        #The src parameter is required to make callbacks explicit. It can 
+        #be of any form, as the callback code will handle the writing.
+         
+        #@param pk id to write at
+        #@param src the data to write.
+        #@param data_create_callback signature <callback name>(src, dst).
+        #'''
+        #path = self.update_cb(pk, src, data_create_callback)
+        #self.header.last_id = pk
+        #self.header.size_inc()
+        #return path
+
+    def create_cb(self, pk):
         '''
         Create a new document, using supplied pk.
+
         This method will not create the data, but ensures data can be
-        created at the path passed to the callback. For consistency,
-        the callback should overwrite existing contents, and create
+        created at the path passed to the 'with'. For consistency,
+        the code should overwrite existing contents, and create
         if necessary ('w+' and 'wb+').
         
-        @param pk id to write at
-        @param data_create_callback signature <callback name>(src, dst).
-        '''
-        path = self.update_cb(pk, src, data_create_callback)
-        self.header.last_id = pk
-        self.header.size_inc()
-        return path
+        Usage ::
+            with db.some_collection.create_cb(pk) as path:
+                some code
                 
+        @param pk id to write at
+        '''
+        class Create:
+            def __init__(self, pk, header, asserted_path_from_pk):
+                self.pk = pk
+                self.header = header
+                self.asserted_path_from_pk = asserted_path_from_pk
+
+            def __enter__(self):
+                path = self.asserted_path_from_pk(self.pk)
+                return path
+    
+            def __exit__(self, type, value, traceback):
+                self.header.last_id = self.pk
+                self.header.size_inc()
+
+        return Create(pk, self.header, self.asserted_document_path)
+               
+                        
     def auto_create(data):
         '''
         Create a new document, using auto-id generation.
         '''
+        #? reverse these actions for write failure protection?
         self.header.next_id()
         path = self.update(self.header.last_id, data)
         self.header.size_inc()
         return path
-        
-    def auto_create_cb(self, src, data_create_callback):
+
+    #def auto_create_cb(self, src, data_create_callback):
+        #'''
+        #Create a new document, using auto-id generation.
+        #This method will not create the data, but ensures data can be
+        #created at the path passed to the callback. For consistency,
+        #the callback should overwrite existing contents, and create
+        #if necessary ('w+' and 'wb+').
+
+        #The src parameter is required to make callbacks explicit. It can 
+        #be of any form, as the callback code will handle the writing.
+                 
+        #@param src the data to write.
+        #@param data_create_callback signature <callback name>(src, dst).
+        #'''
+        #self.header.next_id()
+        #path = self.update_cb(self.header.last_id, src, data_create_callback)
+        #self.header.size_inc()
+        #return path
+
+
+    def auto_create_cb(self):
         '''
         Create a new document, using auto-id generation.
+
         This method will not create the data, but ensures data can be
-        created at the path passed to the callback. For consistency,
-        the callback should overwrite existing contents, and create
+        created at the path passed to the 'with'. For consistency,
+        the code should overwrite existing contents, and create
         if necessary ('w+' and 'wb+').
         
-        @param data_create_callback signature <callback name>(src, dst).
+        Usage ::
+            with db.some_collection.auto_create_cb as path:
+                some code
         '''
-        self.header.next_id()
-        path = self.update_cb(self.header.last_id, src, data_create_callback)
-        self.header.size_inc()
-        return path
+        class AutoCreate:
+            def __init__(self, header, asserted_path_from_pk):
+                self.header = header
+                self.asserted_path_from_pk = asserted_path_from_pk
+
+            def __enter__(self):
+                self.header.next_id()
+                pk = self.header.last_id
+                path = self.asserted_path_from_pk(pk)
+                return path
+    
+            def __exit__(self, type, value, traceback):
+                self.header.size_inc()
+
+        return AutoCreate(self.header, self.asserted_document_path)
         
     def read(self, pk):
         assert isinstance(pk, int), "Not an integer"
@@ -493,27 +650,64 @@ class Collection(CollectionBase):
         with open(path, self.write_format) as f:
             f.write(data)
         return path
+            
+    #def update_cb(self, pk, src, data_create_callback):
+        #'''
+        #Write an element.
+        
+        #This method will not create the data, but ensures data can be
+        #created at the path passed to the callback. For consistency,
+        #the callback should overwrite existing contents, and create
+        #if necessary ('w+' and 'wb+').
 
-    def update_cb(self, pk, src, data_create_callback):
+        #The src parameter is required to make callbacks explicit. It can 
+        #be of any form, as the callback code will handle the writing.
+         
+        #@param pk id to write at
+        #@param src the data to write.
+        #@param data_create_callback signature <callback name>(src, dst).
+        #'''
+        #assert isinstance(pk, int), "Not an integer"
+        #bp = self._bucket_path_from_pk(pk)
+        #os.makedirs(bp, exist_ok=True)
+        #path = os.path.join(bp, str(pk))
+        #data_create_callback(src, path)
+        #return path
+        
+    def update_cb(self, pk):
         '''
-        Write an element.
+        Overwrites existing content, creates if necessary.
+
         This method will not create the data, but ensures data can be
-        created at the path passed to the callback. For consistency,
-        the callback should overwrite existing contents, and create
+        created at the path passed to the 'with'. For consistency,
+        the code should overwrite existing contents, and create
         if necessary ('w+' and 'wb+').
         
+        Usage ::
+            with db.some_collection.create_cb(pk) as path:
+                some write code
+                
         @param pk id to write at
-        @param data_create_callback signature <callback name>(src, dst).
         '''
-        assert isinstance(pk, int), "Not an integer"
-        bp = self._bucket_path_from_pk(pk)
-        os.makedirs(bp, exist_ok=True)
-        path = os.path.join(bp, str(pk))
-        data_create_callback(src, path)
-        return path
+        class Update:
+            def __init__(self, pk, header, asserted_path_from_pk):
+                self.pk = pk
+                self.header = header
+                self.asserted_path_from_pk = asserted_path_from_pk
+
+            def __enter__(self):
+                path = self.asserted_path_from_pk(self.pk)
+                return path
+    
+            def __exit__(self, type, value, traceback):
+                pass
+
+        return Update(pk, self.header, self.asserted_document_path)
+                    
         
     def delete(self, pk):
         assert isinstance(pk, int), "Not an integer"
+        #! delete derived also
         os.remove(self.document_path(pk))   
         self.header.size_dec()
     
