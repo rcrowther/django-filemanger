@@ -19,7 +19,6 @@ class UploadFileForm(forms.Form):
 
 class UploadFile(CreateView):
     form_class = UploadFileForm
-    #! should include collection...
     db_path = None
     collection_name = None
     display_title = 'Upload {0}'
@@ -35,7 +34,6 @@ class UploadFile(CreateView):
     def handle_uploaded_file(self, uploaded_file):
         db = DB(self.db_path)
         coll = db(self.collection_name)
-        # use the callback to upload
         with coll.auto_create_cb() as path:
             with open(path, 'wb+') as destination:
                 for chunk in uploaded_file.chunks():
@@ -55,7 +53,6 @@ class UploadMultipleFileForm(forms.Form):
 
 class UploadMultipleFiles(CreateView):
     form_class = UploadMultipleFileForm
-    #! should include collection...
     db_path = None
     collection_name = None
     display_title = 'Upload {0}'
@@ -71,7 +68,6 @@ class UploadMultipleFiles(CreateView):
     def handle_uploaded_file(self, uploaded_file):
         db = DB(self.db_path)
         coll = db(self.collection_name)
-        # use the callback to upload
         with coll.auto_create_cb() as path:
             with open(path, 'wb+') as destination:
                 for chunk in uploaded_file.chunks():
@@ -89,7 +85,6 @@ class UploadMultipleFiles(CreateView):
 #! wheres the pk for the one to change?
 class UpdateFile(UpdateView):
     form_class = UploadFileForm
-    #! should include collection...
     db_path = None
     collection_name = None
     url_pk_arg = 'pk'
@@ -110,7 +105,6 @@ class UpdateFile(UpdateView):
     def handle_uploaded_file(self, pk, uploaded_file):
         db = DB(self.db_path)
         coll = db(self.collection_name)
-        # use the callback to upload
         with coll.update_cb(int(pk)) as path:
             with open(path, 'wb+') as destination:
                 for chunk in uploaded_file.chunks():
@@ -124,11 +118,9 @@ class UpdateFile(UpdateView):
         
         
         
-#! need collection
 #! needs redirecct
 #! delete what, by name?
 class DeleteView(ConfirmView):
-    #! should include collection...
     db_path = None
     collection_name = None
     confirm_message = '<p>Are you sure you want to delete this file?</p>'

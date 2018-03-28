@@ -2,8 +2,6 @@
 #! rename
 #! rebase in API
 #? establish file lock(s)
-#? use 'with' syntax, not callbacks
 #? maybe should care about lost ids when creates fail?
 #? No policy on overwriting for create and update
-#? Only tested auto_create 'with'
 #! should state, auto increment from 0 or 1
