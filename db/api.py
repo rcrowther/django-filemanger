@@ -8,12 +8,51 @@ class Connection():
           
           
             
-class DB():       
+class DB():  
+    self.collections = None
+
     def __init__(self, path):
+        pass       
+        
+    def __call__(self, name):
+        '''
+        Return a collection from the database.
+        A shortcut for db.collections.collection(name).
+        '''
+        return self.collections.collection(name)
+
+
+
+        
+class Collections:
+    def __init__(self, db):
+        self.db = db
+
+    #def create(self, name, bucket_size=DEFAULT_BUCKET_SIZE, is_binary=False):
+    #    pass
+        
+    def delete(self, name):
+        '''
+        Delete a collection.
+        Destroys all data in a collection. 
+        '''
         pass
         
-        
+    def __call__(self, name):
+        '''
+        A collection by name.
+        As this method uses a name parameter, it can be used by code
+        to access a collection. 
+        '''
+        pass
 
+    def list(self):
+        '''
+        List all collections in this database.
+        @return a list of collection names as strings. 
+        '''
+        pass
+        
                            
 class Collection():
     '''

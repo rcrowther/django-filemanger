@@ -2,7 +2,6 @@ import os
 import shutil
 import math
 import collections
-#from django.conf import settings
 from .header import Header, DEFAULT_BUCKET_SIZE
 
 
@@ -108,13 +107,20 @@ class Collections:
         coll = Collection(name, path, header_path, header)       
         setattr(self.db, name, coll)        
 
-
-    def load(self, name):
+    def __call__(self, name):
         path = os.path.join(self.db.path, name)
         header_path = os.path.join(path, '.header')
         header = Header(header_path)
         header.load() 
-        coll = Collection(name, path, header_path, header)
+        return Collection(name, path, header_path, header)
+        
+    def load(self, name):
+        '''
+        Set a collection on the collections attributes.
+        Used by DB to simplify the syntax of commandline and fixed-code 
+        access.
+        '''
+        coll = self(name)
         setattr(self.db, name, coll)
     
     def delete(self, name):
@@ -178,6 +184,13 @@ class DB():
                 ))
         header_path = os.path.join(path, '.header')
         return RebuildCollection(collection_name, path, header_path)
+
+    def __call__(self, name):
+        '''
+        Return a collection from the database.
+        A shortcut for db.collections.collection(name).
+        '''
+        return self.collections(name)
 
 
 
@@ -368,6 +381,8 @@ class Manager():
         '''
         return sum(os.path.getsize(path) for path in self._paths_all())
                                    
+
+
 
 EntryData = collections.namedtuple('EntryData', 'id path')
 
