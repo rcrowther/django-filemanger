@@ -31,17 +31,11 @@ class UploadFile(CreateView):
         if ((not 'collection_name' in kwargs) or (not kwargs['collection_name'])):
             raise ImproperlyConfigured("{} must have a 'collection_name' parameter".format(self.__class__.__name__))
         super().__init__(**kwargs)
-        
-    def write_uploaded_file(self, uploaded_file, path):
-        with open(path, 'wb+') as destination:
-            for chunk in uploaded_file.chunks():
-                destination.write(chunk)
 
     def handle_uploaded_file(self, uploaded_file):
         db = DB(self.db_path)
         coll = db(self.collection_name)
         # use the callback to upload
-        #db.images.auto_create_cb(uploaded_file, self.write_uploaded_file)
         with coll.auto_create_cb() as path:
             with open(path, 'wb+') as destination:
                 for chunk in uploaded_file.chunks():
@@ -73,11 +67,6 @@ class UploadMultipleFiles(CreateView):
         if ((not 'collection_name' in kwargs) or (not kwargs['collection_name'])):
             raise ImproperlyConfigured("{} must have a 'collection_name' parameter".format(self.__class__.__name__))
         super().__init__(**kwargs)
-    
-    def write_uploaded_file(self, uploaded_file, path):
-        with open(path, 'wb+') as destination:
-            for chunk in uploaded_file.chunks():
-                destination.write(chunk)
 
     def handle_uploaded_file(self, uploaded_file):
         db = DB(self.db_path)
@@ -117,11 +106,6 @@ class UpdateFile(UpdateView):
     def get_object(self):
         # override an initial load.
         return None
-            
-    def write_uploaded_file(self, uploaded_file, path):
-        with open(path, 'wb+') as destination:
-            for chunk in uploaded_file.chunks():
-                destination.write(chunk)
 
     def handle_uploaded_file(self, pk, uploaded_file):
         db = DB(self.db_path)
