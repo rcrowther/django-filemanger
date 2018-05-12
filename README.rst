@@ -24,11 +24,14 @@ Alternatives
 Plenty,
 
 https://djangopackages.org/packages/p/django-imagekit/
+
 http://www.django-photologue.net/
+
 https://djangopackages.org/packages/p/django-filebrowser/
 
 The immense and must-be-mentioned,
     https://github.com/divio/django-filer/
+    
     https://pypi.org/project/django-filer/
     
 'Filer' covers most common scenarios which can arrise when handling files, it has file listings, form fields, thumbnailing, and more. So, some argument in the face of this, about why django-filemanager exists. It is because 'filer' is too immense for my usage. 'Filer' is also prescriptive about how to solve file management, yet there are many ways to solve the issues involved.
@@ -79,6 +82,16 @@ Now use the setting in URL configuration and templating, ::
     # Can use this
     settings.UPLOAD_ROOT
 
+For more on using BucketDB contents, see later. Also
+https://docs.djangoproject.com/en/2.0/howto/static-files/.
+
+
+
+Use of BucketDB
+---------------
+
+URL routing
+~~~~~~~~~~~
 URL e.g. ::
 
     url(r'^add$', quickviews.UploadMultipleFiles.as_view(db_path=settings.UPLOAD_ROOT, collection_name='images'), name='file-add'),
@@ -90,12 +103,26 @@ In 'debug' mode, look at files (currently fails as there are no extensions???) u
 
 There are other ways of placing and handling the database (which is because of Django, not this app). The uploads can be placed in one app (e.g. the 'filemanager' app). The files can be deployed in various ways. Or may not be deployed, because production and dev uploads are not synchronised... 
 
-Use uploaded files in templates. This is an example with very limited usage, to load entries in the 'bucket' database directly (it presumes png contents), ::
+In templates
+~~~~~~~~~~~~
+This is an example with very limited usage, to load entries in the 'bucket' database directly (it presumes png contents), ::
 
-{% load static %}
-<img src="{% static "images/0/17" %}".png alt="Image alt text"/>
+    {% load static %}
+    
+    <img src="{% static "images/0/17" %}".png alt="Image alt text"/>
 
-For more on using BucketDB contents, see later.
+There are several problems here. The URL states the bucket, which is unecessary information. Better is the custom built-in template tag, ::
 
-https://docs.djangoproject.com/en/2.0/howto/static-files/
+    {% load filemanager_tags %}
+    
+    <img src="{% bucketdb_static "images/17" %}".png alt="Image alt text"/>
+
+and another custom tag allows the colllection and pk to be passed as separate arguments, ::
+
+    {% load filemanager_tags %}
+    
+    <img src="{% bucketdb_collection_static "images" 17 %}".png alt="Image alt text"/>
+
+
+
 
