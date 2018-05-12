@@ -1,0 +1,67 @@
+.ddbox {
+min-height: 55px;
+}
+
+.box__button {
+  display: none;
+}
+
+.no-js .box__button {
+  display: block;
+}
+
+.box__file {
+	width: 0.1px;
+	height: 0.1px;
+	opacity: 0;
+	overflow: hidden;
+	position: absolute;
+	z-index: -1;
+}
+
+.box__file + label {
+	cursor: pointer; /* "hand" cursor */
+}
+
+.box__file + label {
+    font-size: 1.25em;
+    font-weight: 700;
+    color: white;
+    background-color: black;
+    display: inline-block;
+}
+
+.box__file:focus + label,
+.box__file + label:hover {
+    background-color: red;
+}
+
+.box__dragndrop,
+.box__uploading,
+.box__success,
+.box__error {
+  display: none;
+}
+
+.ddbox.has-advanced-upload {
+  background-color: white;
+  outline: 2px dashed black;
+  outline-offset: -10px;
+}
+
+.ddbox.has-advanced-upload .box__dragndrop {
+  display: inline;
+}
+
+.ddbox.is-dragover {
+  background-color: grey;
+}
+
+.box.is-uploading .box__input {
+  visibility: hidden;
+}
+
+.box.is-uploading .box__uploading {
+  display: block;
+}
+

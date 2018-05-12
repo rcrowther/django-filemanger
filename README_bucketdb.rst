@@ -1,4 +1,4 @@
-The backend for the filemanager is abstracted and can be anything.
+The backend for the filemanager is abstracted and can be any implementation (including proxies for online apps...).
 
 
 
@@ -12,13 +12,17 @@ Start a db, stating the filesystem location of the database, ::
 
 everything stems from this.
 
-The only requirement on a db is that it can do this, ::
+The only requirements on a db is that it can do this, ::
 
     db.collections.list()
 
-and that existing clooections are available as attributes, ::
+that existing collections are available as attributes, ::
 
     db.images
+
+and that collections can be called programtically, ::
+
+    db('images')
 
 Each collection must provide a simple CRUD interface, ::
 
@@ -28,7 +32,7 @@ Each collection must provide a simple CRUD interface, ::
  
     db.images.size()
 
-The API makes one unusual demand, and that is each collection must make a manager called 'derived' available. 'derived' manages files derived from the main file upload. These may be compressed, run through effects, validated, etc. The derived API  must handle namespacing of derived subcollections. After that, it is simpler than the collection API, it asks only for read(), write() and clear(), and clear_type(), ::
+The API makes one unusual demand, and that is each collection must make a manager called 'derived'. 'derived' manages files derived from the main file upload. Derived files may be compressed, run through effects, validated, etc. The derived API must handle namespacing of derived subcollections. After that, it is simpler than the collection API, it asks only for read(), write(), clear(), and clear_type(), ::
 
     db.images.derived.read('32x32', 9)
     db.images.derived.clear_type('teaser')
@@ -63,4 +67,4 @@ returns a collection to do various kinds of maintenence and analysis e.g.
     def rebuild_size(self):
     def disk_storage_size(self):
 
-NB: the size options report by physical scan, not by consulting cache.
+NB: in the manager, the size options report by a physical scan, not by consulting the cached value.

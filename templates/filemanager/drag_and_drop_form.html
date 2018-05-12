@@ -1,0 +1,29 @@
+{% extends "quickviews/base.html" %}
+{% load static %}
+
+
+{% block html_title %} {{ title|striptags }} {% endblock %}
+
+
+{% block head_tags %}
+<script type="text/javascript" src={% static 'admin/js/vendor/jquery/jquery.min.js' %}></script>
+<link href={% static 'filemanager/drag_and_drop.css' %} type="text/css" media="all" rel="stylesheet">
+<script src={% static 'filemanager/drag_and_drop.js' %} type="text/javascript" async=""></script>
+{% endblock %}
+
+{% block title %} {{ title }} {% endblock %}
+
+{% block content %}
+<form class="ddbox no-js" method="post" action="" enctype="multipart/form-data">
+  {% csrf_token %}
+  
+  <div class="box__input">
+    <input class="box__file" type="file" name="files[]" id="file" data-multiple-caption="{count} files selected" multiple enctype="multipart/form-data"/>
+    <label for="file"><strong>Choose a file</strong><span class="box__dragndrop"> or drag it here</span>.</label>
+    <button class="box__button" type="submit">Upload</button>
+  </div>
+  <div class="box__uploading">Uploading&hellip;</div>
+  <div class="box__success">Done!</div>
+  <div class="box__error">Error! <span></span>.</div>
+</form>
+{% endblock %}

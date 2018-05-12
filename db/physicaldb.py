@@ -84,8 +84,13 @@ class Derived:
             p = os.path.join(bucketpath, 'derived')
             if (os.path.exists(p)):
                 shutil.rmtree(p)
-          
-
+        
+    def __repr__(self):
+        return '<Derived path="{}">'.format(
+            self.db.path
+        )
+        
+        
 class Collections:
     def __init__(self, db):
         self.db = db
@@ -108,6 +113,10 @@ class Collections:
         setattr(self.db, name, coll)        
 
     def __call__(self, name):
+        '''
+        Return a collection of the given name.
+        If it fails a header, FileNotFoundError
+        '''
         path = os.path.join(self.db.path, name)
         header_path = os.path.join(path, '.header')
         header = Header(header_path)
@@ -191,6 +200,11 @@ class DB():
         A shortcut for db.collections.collection(name).
         '''
         return self.collections(name)
+
+    def __repr__(self):
+        return '<DB path="{}">'.format(
+            self.path
+        )
 
 
 
@@ -511,8 +525,31 @@ class Collection(CollectionBase):
             self.write_format = 'wb'
 
     def document_path(self, pk):
+        '''
+        The full path to a document.
+        This is a virtual construction. There is no guarentee the 
+        document exists, only that if it did, it would be found here.
+        '''
         return os.path.join(self._bucket_path_from_pk(pk), str(pk))
 
+    def document_relpath(self, pk):
+        '''
+        The path to a document, relative from and including the DB foldername.
+        This is a virtual construction. There is no guarentee the 
+        document exists, only that if it did, it would be found here.
+        '''
+        return os.path.join(self.name, self._bucket_id_from_pk(pk), str(pk))
+
+    def relpaths(self, range):
+        '''
+        Yield paths to documents, relative from and including the DB foldername.
+        These are virtual constructions. There is no guarentee the 
+        documents exist, only that if they did, they would be found here.
+        '''
+        
+        for pk in range:
+            yield os.path.join(self.name, self._bucket_id_from_pk(pk), str(pk))
+        
     def asserted_document_path(self, pk):
         '''
         Path with guaranteed existing bucket folder structure.
@@ -729,4 +766,14 @@ class Collection(CollectionBase):
     def size(self):
         return self.header.size
 
+    def __str__(self):
+        return '<Collection "{}">'.format(
+            self.name
+        )
+        
+    def __repr__(self):
+        return "<Collection name={}, path={}>".format(
+            self.name,
+            self.path
+        )
 

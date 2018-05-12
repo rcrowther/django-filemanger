@@ -16,8 +16,12 @@ class UploadFileForm(forms.Form):
     file = forms.FileField()
     
 
-
 class UploadFile(CreateView):
+    '''
+    Standalone form to create a file in the database.
+    e.g.
+      url(r'^add$', quickviews.UploadFile.as_view(db_path='/home/rob/djangosites/uploads', collection_name='images'), name='file-add'),
+    '''
     form_class = UploadFileForm
     db_path = None
     collection_name = None
@@ -52,6 +56,11 @@ class UploadMultipleFileForm(forms.Form):
     
 
 class UploadMultipleFiles(CreateView):
+    '''
+    Standalone form to create multiple files in the database
+    e.g.
+      url(r'^add$', quickviews.UploadMultipleFiles.as_view(db_path='/home/rob/djangosites/uploads', collection_name='images'), name='file-add'),
+    '''
     form_class = UploadMultipleFileForm
     db_path = None
     collection_name = None
@@ -84,6 +93,11 @@ class UploadMultipleFiles(CreateView):
 
 #! wheres the pk for the one to change?
 class UpdateFile(UpdateView):
+    '''
+    Standalone form to update a file in the database
+    e.g.
+      url(r'^(?P<pk>[0-9]+)/edit$', quickviews.UpdateFile.as_view(db_path='/home/rob/djangosites/uploads', collection_name='images'), name='file-update'),
+    '''
     form_class = UploadFileForm
     db_path = None
     collection_name = None
@@ -100,6 +114,7 @@ class UpdateFile(UpdateView):
 
     def get_object(self):
         # override an initial load.
+        #? ortest exists?
         return None
 
     def handle_uploaded_file(self, pk, uploaded_file):
@@ -121,6 +136,11 @@ class UpdateFile(UpdateView):
 #! needs redirecct
 #! delete what, by name?
 class DeleteView(ConfirmView):
+    '''
+    Standalone form to delete a file from the database
+    e.g.
+      url(r'^(?P<pk>[0-9]+)/delete$', quickviews.DeleteView.as_view(db_path='/home/rob/djangosites/uploads', collection_name='images'), name='file-delete'),
+    '''
     db_path = None
     collection_name = None
     confirm_message = '<p>Are you sure you want to delete this file?</p>'

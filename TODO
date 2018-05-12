@@ -5,3 +5,21 @@
 #? maybe should care about lost ids when creates fail?
 #? No policy on overwriting for create and update
 #! should state, auto increment from 0 or 1
+
+== GUI
+#? Drag/drop area
+#? whole window drag area?
+https://stackoverflow.com/questions/3144881/how-do-i-detect-a-html5-drag-event-entering-and-leaving-the-window-like-gmail-d
+#? Are these to be used with other data e.g. 'files with info' (Form Field), or standalone 'a file'? (View)?
+#? and are the uploads to be used with the file Model?
+#? Progress reports?
+
+== DDGUI
+#? Theres a way to do Django JQuery?
+
+
+== Admin
+#? a search?
+
+== Effects
+#? while uploading or code-triggered afterwards?
