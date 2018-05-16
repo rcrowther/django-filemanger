@@ -8,6 +8,24 @@ import os
 
 from django.forms import ModelForm
 from .models import File
+
+#class FileForm(ModelForm):
+    #class Meta:
+         #model = File
+         #fields = ['name', 'path', 'description', 'author']
+
+
+#def create_file(request):
+    #if request.method == 'POST':
+        #form = FileForm(request.POST, request.FILES)
+        #if form.is_valid():
+            ## file is saved
+            #form.save()
+            #return HttpResponseRedirect('/success/url/')
+    #else:
+        #form = FileForm()
+    #return render(request, 'upload.html', {'form': form})
+  
 #from django.views import CreateView
 #from django.views.generic.edit import CreateView
 

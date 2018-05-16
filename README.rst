@@ -109,19 +109,19 @@ This is an example with very limited usage, to load entries in the 'bucket' data
 
     {% load static %}
     
-    <img src="{% static "images/0/17" %}".png alt="Image alt text"/>
+    <img src="{% static "images/0/17" %}" alt="Image alt text"/>
 
 There are several problems here. The URL states the bucket, which is unecessary information. Better is the custom built-in template tag, ::
 
     {% load filemanager_tags %}
     
-    <img src="{% bucketdb_static "images/17" %}".png alt="Image alt text"/>
+    <img src="{% bucketdb_static "images/17" %}" alt="Image alt text"/>
 
 and another custom tag allows the colllection and pk to be passed as separate arguments, ::
 
     {% load filemanager_tags %}
     
-    <img src="{% bucketdb_collection_static "images" 17 %}".png alt="Image alt text"/>
+    <img src="{% bucketdb_collection_static "images" 17 %}" alt="Image alt text"/>
 
 
 

@@ -10,10 +10,22 @@ except ImportError:
 
 from .db import DB
 
+from django.forms import ModelForm
+from .models import File
 
+
+class FileForm(ModelForm):
+    class Meta:
+         model = File
+         fields = ['name', 'path', 'description', 'author']
+         
+class CreateFile(ModelCreateView):
+    model = File
+    form_class = FileForm
+    object_name_field_key = 'name'
 
 class UploadFileForm(forms.Form):
-    file = forms.FileField()
+    form_class = forms.FileField
     
 
 class UploadFile(CreateView):

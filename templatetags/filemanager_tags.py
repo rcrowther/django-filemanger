@@ -7,6 +7,8 @@ from django.conf import settings
 from django.templatetags import static
 from django.utils.safestring import mark_safe
 
+#? cache the DB? And/or collection?
+
 @register.tag('bucketdb_static')
 def do_static(parser, token):
     try:

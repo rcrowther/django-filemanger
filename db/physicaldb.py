@@ -140,7 +140,7 @@ class Collections:
         return self.db.dirnames
            
            
-            
+#? make a fixed property?
 class DB():       
     '''
     Access the physical DB.
@@ -524,6 +524,14 @@ class Collection(CollectionBase):
             self.read_format = 'rb'
             self.write_format = 'wb'
 
+    def path(self, pk):
+        '''
+        The full path to a document.
+        This is a virtual construction. There is no guarentee the 
+        document exists, only that if it did, it would be found here.
+        '''
+        return os.path.join(self._bucket_path_from_pk(pk), str(pk))
+        
     def document_path(self, pk):
         '''
         The full path to a document.
@@ -540,6 +548,14 @@ class Collection(CollectionBase):
         '''
         return os.path.join(self.name, self._bucket_id_from_pk(pk), str(pk))
 
+    def relpath(self, pk):
+        '''
+        The path to a document, relative from and including the DB foldername.
+        This is a virtual construction. There is no guarentee the 
+        document exists, only that if it did, it would be found here.
+        '''
+        return os.path.join(self.name, self._bucket_id_from_pk(pk), str(pk))
+        
     def relpaths(self, range):
         '''
         Yield paths to documents, relative from and including the DB foldername.
@@ -559,7 +575,12 @@ class Collection(CollectionBase):
         bp = self._bucket_path_from_pk(pk)
         os.makedirs(bp, exist_ok=True)
         return os.path.join(bp, str(pk))
-        
+
+        assert isinstance(pk, int), "Not an integer"
+        bp = self._bucket_path_from_pk(pk)
+        os.makedirs(bp, exist_ok=True)
+        path = os.path.join(bp, str(pk))
+                
     def create(pk, data):
         '''
         Create a new document, using supplied pk.
@@ -569,27 +590,7 @@ class Collection(CollectionBase):
         path = self.update(pk, data)
         self.header.last_id = pk
         self.header.size_inc()
-        return path      
-
-    #def create_cb(self, pk, src, data_create_callback):
-        #'''
-        #Create a new document, using supplied pk.
-        #This method will not create the data, but ensures data can be
-        #created at the path passed to the callback. For consistency,
-        #the callback should overwrite existing contents, and create
-        #if necessary ('w+' and 'wb+').
-        
-        #The src parameter is required to make callbacks explicit. It can 
-        #be of any form, as the callback code will handle the writing.
-         
-        #@param pk id to write at
-        #@param src the data to write.
-        #@param data_create_callback signature <callback name>(src, dst).
-        #'''
-        #path = self.update_cb(pk, src, data_create_callback)
-        #self.header.last_id = pk
-        #self.header.size_inc()
-        #return path
+        return path
 
     def create_cb(self, pk):
         '''
@@ -621,8 +622,7 @@ class Collection(CollectionBase):
                 self.header.size_inc()
 
         return Create(pk, self.header, self.asserted_document_path)
-               
-                        
+                                                      
     def auto_create(data):
         '''
         Create a new document, using auto-id generation.
@@ -632,26 +632,6 @@ class Collection(CollectionBase):
         path = self.update(self.header.last_id, data)
         self.header.size_inc()
         return path
-
-    #def auto_create_cb(self, src, data_create_callback):
-        #'''
-        #Create a new document, using auto-id generation.
-        #This method will not create the data, but ensures data can be
-        #created at the path passed to the callback. For consistency,
-        #the callback should overwrite existing contents, and create
-        #if necessary ('w+' and 'wb+').
-
-        #The src parameter is required to make callbacks explicit. It can 
-        #be of any form, as the callback code will handle the writing.
-                 
-        #@param src the data to write.
-        #@param data_create_callback signature <callback name>(src, dst).
-        #'''
-        #self.header.next_id()
-        #path = self.update_cb(self.header.last_id, src, data_create_callback)
-        #self.header.size_inc()
-        #return path
-
 
     def auto_create_cb(self):
         '''
@@ -695,37 +675,15 @@ class Collection(CollectionBase):
 
         @param pk id to write at
         '''
-        assert isinstance(pk, int), "Not an integer"
-        bp = self._bucket_path_from_pk(pk)
-        os.makedirs(bp, exist_ok=True)
-        path = os.path.join(bp, str(pk))
-        with open(path, self.write_format) as f:
-            f.write(data)
-        return path
-            
-    #def update_cb(self, pk, src, data_create_callback):
-        #'''
-        #Write an element.
-        
-        #This method will not create the data, but ensures data can be
-        #created at the path passed to the callback. For consistency,
-        #the callback should overwrite existing contents, and create
-        #if necessary ('w+' and 'wb+').
-
-        #The src parameter is required to make callbacks explicit. It can 
-        #be of any form, as the callback code will handle the writing.
-         
-        #@param pk id to write at
-        #@param src the data to write.
-        #@param data_create_callback signature <callback name>(src, dst).
-        #'''
         #assert isinstance(pk, int), "Not an integer"
         #bp = self._bucket_path_from_pk(pk)
         #os.makedirs(bp, exist_ok=True)
         #path = os.path.join(bp, str(pk))
-        #data_create_callback(src, path)
-        #return path
-        
+        path = self.asserted_document_path(pk)
+        with open(path, self.write_format) as f:
+            f.write(data)
+        return path
+            
     def update_cb(self, pk):
         '''
         Overwrites existing content, creates if necessary.

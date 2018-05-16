@@ -1,5 +1,5 @@
 from django.db import models
-
+from .storage import BucketDBStorage
 
 
 class Effect(models.Model):
@@ -112,6 +112,10 @@ class FileManager(models.Manager):
       o.save()
       return o    
     
+    
+fs = BucketDBStorage()
+
+#! do something about size, duplicates File functionality
 class File(models.Model):
     name = models.CharField(
       max_length=255,
@@ -143,7 +147,8 @@ class File(models.Model):
     #path = models.CharField(
     #  max_length=256,
     path = models.FileField(
-      #upload_to='uploads/',
+      storage=fs,
+      upload_to='images',
       #unique=True,
       help_text="Path to file.",
       )
@@ -155,11 +160,11 @@ class File(models.Model):
       help_text="Name of the author/source.",
       )
       
-    size = models.IntegerField(
-      help_text="Size of this file in KB.",
-      )
+    #size = models.IntegerField(
+      #help_text="Size of this file in KB.",
+      #)
        
-    lcns = models.CharField(
+    licence = models.CharField(
       'license',
       max_length=64,
       blank=True, 
@@ -170,8 +175,8 @@ class File(models.Model):
     objects = models.Manager()
     system = FileManager()
 
-    def __str__(self):
-      return "{0}-{1}".format(
+    def __repl__(self):
+      return "pk:{0, name:{1}".format(
       self.pk,
       self.name, 
       )

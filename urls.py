@@ -1,6 +1,6 @@
 from django.conf.urls import url
 from . import quickviews
-from .views import DDUpload
+from .views import DDUpload #, CreateFile
 from django.conf import settings
 
 urlpatterns = [
@@ -9,7 +9,9 @@ urlpatterns = [
     #url(r'^file/(?P<file_id>[0-9]+)$', views.manage_files, name='file-form'),
     #url(r'^file/add$', views.file_add, name='file-add'),
     ##
-    #url(r'^add$', quickviews.UploadFile.as_view(db_path='/home/rob/djangosites/uploads', collection_name='images'), name='file-add'),
+    
+    #url(r'^modeladd$', create_file, name='file-modeladd'),
+    url(r'^modeladd$', quickviews.CreateFile.as_view(), name='file-modeladd'),
     url(r'^ddadd$', DDUpload.as_view()),
     #url(r'^add$', quickviews.UploadFile.as_view(db_path='/home/rob/djangosites/uploads', collection_name='images'), name='file-add'),
     url(r'^add$', quickviews.UploadMultipleFiles.as_view(db_path=settings.UPLOAD_ROOT, collection_name='images'), name='file-add'),
