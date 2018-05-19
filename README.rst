@@ -117,7 +117,7 @@ There are several problems here. The URL states the bucket, which is unecessary 
     
     <img src="{% bucketdb_static "images/17" %}" alt="Image alt text"/>
 
-and another custom tag allows the colllection and pk to be passed as separate arguments, ::
+and another custom tag allows the collection and pk to be passed as separate arguments, ::
 
     {% load filemanager_tags %}
     
@@ -125,4 +125,23 @@ and another custom tag allows the colllection and pk to be passed as separate ar
 
 
 
+The Model Field 
+~~~~~~~~~~~~~~~~~
+A model field called BucketDBFileField exists, ::
+    
+    from filemanager.fields import BucketDBFileField
+    
+    class Uploads(models.Model):
+        ...
+        
+        file = BucketDBFileField(
+          collection='images',
+          #auto_delete=False,
+          help_text="File associated with upload data.",
+          )
+      
+The field is very like a Django model FileField, so you can do most of the same configuration, such as changing widgets. The differences are that it uses a BucketDB as the persitent storage. For a BucketDB, the field requires a 'collection' argument.
 
+There is one mild difference to FileField. Before Django 1.somepatch, a FileField automatically removed a file when 'delete' was called on the model. Possibly due to the many ways FileField can be used(?) this action was removed. For orphaned files, a coder must implement a garbage collection.
+
+BucketDBFileField re-enstates auto-file-delete, and it is True by default. The action is optional, can be switched off in the field parameters.

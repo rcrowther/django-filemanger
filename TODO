@@ -14,6 +14,12 @@ https://stackoverflow.com/questions/3144881/how-do-i-detect-a-html5-drag-event-e
 #? and are the uploads to be used with the file Model?
 #? Progress reports?
 
+== Field
+check UPLOAD_ROOT exists
+
+== Template tags
+check UPLOAD_ROOT exists
+
 == Forms
 Limits for MAX_FILE_NUMBER (if ever multiple?)
 delete form

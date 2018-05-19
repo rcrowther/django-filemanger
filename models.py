@@ -153,7 +153,9 @@ class File(models.Model):
     path = BucketDBFileField(
       #storage=fs,
       #widget=forms.ClearableFileInput(attrs={'multiple': True}),
-      upload_to='images',
+      #upload_to='images',
+      collection='images',
+      #auto_delete=False,
       #unique=True,
       help_text="Path to file.",
       )
