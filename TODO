@@ -1,7 +1,7 @@
 == bucketDB
 #! rename
 #! rebase in API
-#? establish file lock(s)
+#? establish file lock(s)/async ability
 #? maybe should care about lost ids when creates fail?
 #? No policy on overwriting for create and update
 #! should state, auto increment from 0 or 1
@@ -15,8 +15,8 @@ https://stackoverflow.com/questions/3144881/how-do-i-detect-a-html5-drag-event-e
 #? Progress reports?
 
 == Forms
-
-
+Limits for MAX_FILE_NUMBER (if ever multiple?)
+delete form
 
 == DDGUI
 #? Theres a way to do Django JQuery?

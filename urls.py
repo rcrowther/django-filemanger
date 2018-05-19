@@ -12,6 +12,8 @@ urlpatterns = [
     
     #url(r'^modeladd$', create_file, name='file-modeladd'),
     url(r'^modeladd$', quickviews.CreateFile.as_view(), name='file-modeladd'),
+    url(r'^(?P<pk>[0-9]+)/modeldelete$', quickviews.DeleteFile.as_view(), name='file-modeldelete'),
+    
     url(r'^ddadd$', DDUpload.as_view()),
     #url(r'^add$', quickviews.UploadFile.as_view(db_path='/home/rob/djangosites/uploads', collection_name='images'), name='file-add'),
     url(r'^add$', quickviews.UploadMultipleFiles.as_view(db_path=settings.UPLOAD_ROOT, collection_name='images'), name='file-add'),

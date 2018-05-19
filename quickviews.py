@@ -4,7 +4,7 @@ from django import forms
 from django.core.exceptions import ImproperlyConfigured
 
 try:
-    from quickviews import ModelCreateView, UpdateView, CreateView, ConfirmView
+    from quickviews import ModelCreateView, ModelDeleteView, UpdateView, CreateView, ConfirmView
 except ImportError:
     raise ImportError('The Filemanager.quickviews module requires the Quickviews app.')
 
@@ -12,18 +12,38 @@ from .db import DB
 
 from django.forms import ModelForm
 from .models import File
-
+from django.core.validators import FileExtensionValidator
+from filevalidators.validators import MimeValidator, FileSizeValidator
 
 class FileForm(ModelForm):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)     
+        #self.fields["title"].min_length = 20
+        self.fields["path"].validators.extend([
+            #FileExtensionValidator(allowed_extensions=['fig']),
+            #MimeValidator(allowed_mimes=['wiggy/wig']),
+            #FileSizeValidator(max_size=5000, base='kB')
+        ])
+        
     class Meta:
          model = File
          fields = ['name', 'path', 'description', 'author']
-         
+
+
+
 class CreateFile(ModelCreateView):
     model = File
     form_class = FileForm
     object_name_field_key = 'name'
 
+class DeleteFile(ModelDeleteView):
+    model = File
+    url_pk_arg = 'pk'
+    object_name_field_key = 'name'
+    success_url = '/'
+
+#########
 class UploadFileForm(forms.Form):
     form_class = forms.FileField
     

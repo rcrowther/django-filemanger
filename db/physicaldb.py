@@ -717,6 +717,10 @@ class Collection(CollectionBase):
         
     def delete(self, pk):
         assert isinstance(pk, int), "Not an integer"
+        #? May need to cloase
+        #if hasattr(self, '_file'):
+            #self.close()
+            #del self.file
         #! delete derived also
         os.remove(self.document_path(pk))   
         self.header.size_dec()

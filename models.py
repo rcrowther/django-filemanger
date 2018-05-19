@@ -1,5 +1,7 @@
 from django.db import models
 from .storage import BucketDBStorage
+from .fields import BucketDBFileField
+
 
 
 class Effect(models.Model):
@@ -120,7 +122,7 @@ class File(models.Model):
     name = models.CharField(
       max_length=255,
       db_index=True,
-      unique=True,
+      #unique=True,
       help_text="Name for this file. Limited to 255 characters.",
       )
 
@@ -146,8 +148,11 @@ class File(models.Model):
     
     #path = models.CharField(
     #  max_length=256,
-    path = models.FileField(
-      storage=fs,
+    
+    #path = models.FileField(
+    path = BucketDBFileField(
+      #storage=fs,
+      #widget=forms.ClearableFileInput(attrs={'multiple': True}),
       upload_to='images',
       #unique=True,
       help_text="Path to file.",
@@ -159,10 +164,6 @@ class File(models.Model):
       default='',
       help_text="Name of the author/source.",
       )
-      
-    #size = models.IntegerField(
-      #help_text="Size of this file in KB.",
-      #)
        
     licence = models.CharField(
       'license',
